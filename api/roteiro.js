@@ -268,6 +268,7 @@ Campos:
     const tableStyle = `style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"`;
     const thStyle = `style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"`;
 
+    // >>>> ATENÇÃO: refeições não contam como atração; mínimo de atrações/dia é só de atrações <<<<
     const mainPrompt =
 `Você é um planner de viagens sênior.
 Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown, sem <script> e sem <style>.
@@ -282,14 +283,15 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
 <section>
   <h2>2. Atrações Imperdíveis</h2>
   <ul>
-    <!-- 10–18 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Coloque <small>Fonte: <a href="...">domínio</a></small>. -->
+    <!-- 10–18 itens **somente atrações** (NÃO listar restaurantes/bares): nome, bairro/zona, breve descrição, tempo médio, melhor horário;
+         faixa de preço (BRL + ${meta.currency_code}). <small>Fonte: <a href="...">domínio</a></small>. -->
   </ul>
 </section>
 
 <section>
   <h2>3. Onde comer & beber</h2>
   <ul>
-    <!-- 8–14 lugares com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
+    <!-- 8–14 lugares com estilo/cozinha, bairro/zona, ticket médio por pessoa (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
   </ul>
 </section>
 
@@ -309,14 +311,40 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
 
 <section>
   <h2>6. Roteiro Dia a Dia</h2>
-  <!-- Para D1..D${dias}, gere <h3>Dia X</h3> seguido de UMA LISTA com **no mínimo 5** e preferencialmente **6–7** atividades bem distribuídas ao longo do dia, cobrindo ~12h úteis.
-       Para cada atividade, mostre:
-       • faixa de horário aproximada (ex.: 08:30–10:00, 10:15–12:00, 12:00–13:30 almoço, 14:00–16:00, 16:15–18:00, 19:30–21:30);
-       • nome do lugar/experiência + bairro/zona;
-       • por que vale a pena / dica prática;
-       • preço quando pago (BRL + ${meta.currency_code});
-       • <small>Fonte: <a href="...">domínio</a></small>.
-       Evite limitar-se a "manhã/tarde/noite": distribua em blocos (manhã cedo, manhã, almoço, início da tarde, fim da tarde, noite, extra opcional). -->
+  <!-- Para D1..D${dias}, gere a estrutura:
+       <h3>Dia X</h3>
+
+       <h4>Atrações do dia (refeições NÃO contam)</h4>
+       <ul class="day-plan">
+         // Liste **no mínimo 5** e preferencialmente **6–7** itens com data-type="attraction".
+         // Cada item deve trazer:
+         // • faixa de horário (ex.: 08:30–10:00, 10:15–12:00, 14:00–16:00... cobrindo ~12h úteis no total);
+         // • nome do lugar/experiência + bairro/zona;
+         // • dica prática/por que vale a pena;
+         // • preço por pessoa quando pago, no formato "R$ 120 (~${meta.currency_code} 21,60)" (se grátis, escrever "Grátis");
+         // • <small>Fonte: <a href="...">domínio</a></small>.
+         // Exemplo de <li>:
+         // <li data-type="attraction"><strong>08:30–10:00</strong> — Mirante XYZ (Centro). Vista panorâmica. Preço: R$ 40 (~${meta.currency_code} 7,20). <small>Fonte: ...</small></li>
+       </ul>
+
+       <h4>Pausas para refeições (não contam como atração)</h4>
+       <ul class="meals">
+         // Liste 2–3 refeições com data-type="meal": Almoço, Jantar (e opcional Café/Lanche).
+         // Cada item deve trazer horário, nome do restaurante/bar, bairro, estilo/cozinha e **ticket médio por pessoa** (BRL + ${meta.currency_code}).
+         // Ex.: <li data-type="meal"><strong>12:30–13:45</strong> — Almoço no Restaurante ABC (Bairro). Cozinha local. Ticket médio: R$ 80 (~${meta.currency_code} 14,40). <small>Fonte: ...</small></li>
+       </ul>
+
+       <h5>Resumo de custos do dia</h5>
+       <table ${tableStyle}>
+         <thead>
+           <tr><th ${thStyle}>Categoria</th><th ${thStyle}>Por pessoa (R$ / ${meta.currency_code})</th><th ${thStyle}>Grupo ${pessoas} (R$ / ${meta.currency_code})</th></tr>
+         </thead>
+         <tbody>
+           <!-- Some as estimativas deste dia: Atrações | Alimentação | Transporte local | (opcional) Extras.
+                Informe valores por pessoa e para o grupo (multiplicando por ${pessoas}). -->
+         </tbody>
+       </table>
+  -->
 </section>
 
 <section>
@@ -345,9 +373,9 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
   <ul><!-- até 12 links --></ul>
 </section>
 
-Regras de moeda:
-- Sempre mostre valores em BRL e ${meta.currency_code}.
-- Formato: "R$ 120 (~${meta.currency_code} 21,60)".
+Regras IMPORTANTES:
+- **Refeições não contam** para o mínimo de atividades. O mínimo (≥5) é apenas de <li data-type="attraction"> por dia.
+- Sempre mostre valores em BRL e ${meta.currency_code}. Formato: "R$ 120 (~${meta.currency_code} 21,60)".
 - Conversões: BRL→${meta.currency_code} = valor_BR * ${fx.brl_to_quote || 0}; ${meta.currency_code}→BRL = valor_LOC * ${fx.quote_to_brl || 0}.
 - Se a moeda local for BRL, use apenas R$.
 
