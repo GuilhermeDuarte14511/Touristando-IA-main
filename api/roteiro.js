@@ -5,7 +5,7 @@ import sgMail from '@sendgrid/mail';
 
 /* ----------------------- utils ----------------------- */
 
-// Escapar HTML (para e-mail)
+// Escapar HTML (usado só no resumo de e-mail)
 const escapeHtml = (s = '') =>
   String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -132,12 +132,12 @@ export default async function handler(req, res) {
 `Você extrai metadados geográficos e de moeda. Responda SOMENTE com JSON válido (sem comentários).
 Dado um destino (país, estado, região ou cidade), retorne:
 {
-  "normalized_name": string,               // Nome normalizado (ex.: "Califórnia", "Lisboa", "Japão")
+  "normalized_name": string,
   "region_type": "country"|"state"|"city"|"region",
-  "country_name": string,                  // País ao qual pertence
-  "country_code": string,                  // ISO-3166-1 alfa-2 (ex.: "US","BR","PT")
-  "currency_code": string,                 // ISO 4217 principal usada lá (ex.: "USD","EUR","BRL")
-  "currency_name": string                  // Nome da moeda
+  "country_name": string,
+  "country_code": string,
+  "currency_code": string,
+  "currency_name": string
 }` },
       { role: 'user', content: `Destino: ${destinoEntrada}` }
     ];
@@ -224,7 +224,7 @@ Dado um destino (país, estado, região ou cidade), retorne:
       return partes.join(' ');
     })();
 
-    /* ---------- 3) Prompt principal (atrações, hotéis, transportes, custos) ---------- */
+    /* ---------- 3) Prompt principal (HTML completo, sem Markdown) ---------- */
     const convHeader = (fx.quote !== 'BRL' && fx.brl_to_quote)
       ? `Taxa usada (exchangerate.host, ${fx.date}): 1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)})`
       : `Moeda local: BRL. Mostre os valores apenas em R$.`;
@@ -240,79 +240,112 @@ Dado um destino (país, estado, região ou cidade), retorne:
       'romântica': 'Foque passeios cênicos, restaurantes charmosos e experiências a dois.'
     })[estilo] || 'Misture clássicos turísticos com tempo livre e opções flexíveis.';
 
-    // 🔳 estilos inline para tabelas bonitas no tema escuro da UI
+    // estilos inline para tabelas bonitas no tema escuro da UI
     const tableStyle = `style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"`;
     const thStyle = `style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"`;
-    const tdStyle = `style="padding:8px 10px;border:1px solid #2a3358;color:#fff"`; // cor herdará do tema
+    const tdStyle = `style="padding:8px 10px;border:1px solid #2a3358;color:#fff"`;
 
     const mainPrompt =
-`Gere um roteiro detalhado **em PT-BR** para **${destinoLabel}**, considerando **${dias} dia(s)**, **${pessoas} pessoa(s)**, perfil **${perfil}** e estilo **${estilo}**.
-${faixa}
+`Você é um planner de viagens sênior.
+Responda **apenas com HTML válido**, em **PT-BR**, sem qualquer Markdown, sem blocos de código e sem texto fora do HTML.
+Retorne um único **fragmento HTML** começando por:
+<div class="trip-plan" data-render="roteiro"> ... </div>
+Não inclua <html>, <head> ou <body>. Não use <script> nem <style>; use apenas estilos **inline** quando necessário.
 
-Requisitos obrigatórios:
-- **Estrutura em Markdown** nas seções abaixo, com títulos numerados.
-- **Sempre** mostre valores **em R$** e **na moeda local (${meta.currency_code})** usando **somente** a taxa abaixo (não invente outra):
-  ${convHeader}
-  - Se a moeda local for BRL, use somente R$.
-  - Formate como: \`R$ 120 (~${meta.currency_code} 21.60)\` ou apenas \`R$ 120\` se BRL.
-  - Converta usando: \`BRL -> ${meta.currency_code}\` = valor_BR * ${fx.brl_to_quote || 0}, \`${meta.currency_code} -> BRL\` = valor_LOC * ${fx.quote_to_brl || 0}.
-- Não invente **preços exatos de voos** nem dados de contato; use **faixas típicas** e deixe claro que são estimativas.
-- **IMPORTANTE (TABELAS BONITAS):** para as seções **"Resumo do Planejamento"** e **"Orçamento Resumido"**, NÃO use Markdown de tabela. **Use HTML puro**:
-  \`<table ${tableStyle}><thead><tr><th ${thStyle}>...</th>...</tr></thead><tbody><tr><td ${tdStyle}>...</td>...</tr></tbody></table>\`.
-  Use o estilo exatamente como acima (atributos \`${tableStyle}\`, \`${thStyle}\`, \`${tdStyle}\`) para harmonizar com o tema escuro.
+Contexto do pedido:
+- Destino: ${destinoLabel}
+- Dias: ${dias}
+- Pessoas: ${pessoas}
+- Perfil: ${perfil}
+- Estilo: ${estilo}
+- Brief: ${faixa}
+- Conversão: ${convHeader}
+- Regras de moeda:
+  • Sempre mostre valores em BRL e na moeda local (${meta.currency_code}).  
+  • Formato: "R$ 120 (~${meta.currency_code} 21,60)".  
+  • Conversões: BRL→${meta.currency_code} = valor_BR * ${fx.brl_to_quote || 0} ;  ${meta.currency_code}→BRL = valor_LOC * ${fx.quote_to_brl || 0}.
+  • Se a moeda local for BRL, use apenas R$.
 
-Personalização:
-- ${estiloBrief}
+Estrutura obrigatória (HTML):
+<section>
+  <h2>0. Resumo do Planejamento</h2>
+  <!-- Gerar TABELA HTML 2 colunas (Campo | Valor) -->
+  <table ${tableStyle}>
+    <thead><tr><th ${thStyle}>Campo</th><th ${thStyle}>Valor</th></tr></thead>
+    <tbody>
+      <!-- preencher: Destino, Dias, Pessoas, Perfil, Estilo, Orçamento total (se houver), Orçamento por pessoa (se houver), Moeda local, Taxa utilizada (texto exatamente: "${convHeader}") -->
+    </tbody>
+  </table>
+</section>
 
-Seções (nesta ordem):
+<section>
+  <h2>1. Visão Geral</h2>
+  <p>Explique cidade-base e 1–2 alternativas, época/clima, segurança e deslocamento.</p>
+</section>
 
-0. **Resumo do Planejamento (tabela HTML)**  
-   Gere **uma tabela HTML de duas colunas** (Campo | Valor) contendo:  
-   - Destino; Dias; Pessoas; Perfil; Estilo;  
-   - Orçamento **total** (se houver) e **por pessoa** (se houver), em R$;  
-   - Moeda local (código);  
-   - Linha "Taxa utilizada" com o texto **exatamente**: "${convHeader}".
+<section>
+  <h2>2. Atrações Imperdíveis</h2>
+  <ul>
+    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, faixa de preço (BRL + ${meta.currency_code}) -->
+  </ul>
+</section>
 
-1. **Visão Geral**  
-   - Melhor cidade-base (e 1–2 alternativas).  
-   - Melhor época e clima; segurança e deslocamento entre bairros/cidades.  
+<section>
+  <h2>3. Hospedagem Recomendada</h2>
+  <ul>
+    <!-- 6–10 itens; preferir nomes confiáveis de hotéis/pousadas ou bairros/zonas + cadeia comum; incluir bairro/zona, categoria (econômico/médio/superior) e diária média (BRL + ${meta.currency_code}); não incluir links/telefones -->
+  </ul>
+</section>
 
-2. **Atrações Imperdíveis (8–15)**  
-   - Para cada atração, inclua: **nome**, **bairro/zona**, **breve descrição**, **tempo médio de visita** e **faixa de preço** (se paga) **em BRL + ${meta.currency_code}**.
+<section>
+  <h2>4. Transporte Local</h2>
+  <ul>
+    <!-- metrô/ônibus/app/táxi/passe/trem; faixas de preço por trecho/diária; trajetos típicos aeroporto↔centro etc. -->
+  </ul>
+</section>
 
-3. **Hospedagem Recomendada (6–10)**  
-   - Liste **nomes de hotéis/pousadas** quando houver segurança razoável (evite nomes obscuros). Caso contrário, liste **bairros/zonas** e **cadeias comuns** (ex.: Ibis, Holiday Inn, etc.).  
-   - Para cada item, inclua: **bairro/zona**, **categoria** (econômico / médio / superior) e **diária média** (BRL + ${meta.currency_code}).  
-   - **Não crie links** nem telefones. Não invente endereços completos — apenas bairro/zona.
+<section>
+  <h2>5. Roteiro Dia a Dia</h2>
+  <!-- Para D1..D${dias}, gerar subtítulos <h3>Dia X</h3> e listas com 2–4 atividades (manhã/tarde/noite); custos quando pagos (BRL + ${meta.currency_code}). -->
+</section>
 
-4. **Transporte Local**  
-   - Opções (metrô/ônibus/app/táxi/passe/trem interurbano), **faixas de preço** por trecho/diária (BRL + ${meta.currency_code}).  
-   - Inclua trechos típicos (aeroporto→centro, centro→bairros turísticos) quando fizer sentido.
+<section>
+  <h2>6. Orçamento Resumido</h2>
+  <h3>Tabela 1 — Custos por dia (faixas)</h3>
+  <!-- TABELA HTML com colunas: Item | Dia 1..Dia ${dias} | Subtotal/Dia ; cada célula traz R$ e (~${meta.currency_code}). -->
+  <table ${tableStyle}>
+    <thead>
+      <tr>
+        <th ${thStyle}>Item</th>
+        <!-- gerar cabeçalhos Dia 1..Dia ${dias} -->
+        <th ${thStyle}>Subtotal/Dia</th>
+      </tr>
+    </thead>
+    <tbody><!-- preencher linhas: Hospedagem / Alimentação / Transporte / Atrações --></tbody>
+  </table>
 
-5. **Roteiro Dia a Dia (D1..D${dias})**  
-   - Para cada dia, sugira 2–4 atividades (manhã/tarde/noite).  
-   - Indique custos quando pagos, **sempre** (BRL + ${meta.currency_code}).
+  <h3>Tabela 2 — Quadro-resumo do grupo</h3>
+  <!-- TABELA HTML 2 colunas (Métrica | Valor) contendo: Total do período (grupo), Total por pessoa, Por dia (grupo), Por pessoa/dia) em R$ e (${meta.currency_code}) -->
+  <table ${tableStyle}>
+    <thead><tr><th ${thStyle}>Métrica</th><th ${thStyle}>Valor</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
 
-6. **Orçamento Resumido (tabelas HTML)**  
-   - **Tabela 1 — Custos por dia (faixas)**: gere **tabela HTML** com colunas **Item**, **Dia 1..Dia ${dias}**, **Subtotal/Dia** — todos em **BRL** e, na mesma célula, o valor convertido em ${meta.currency_code} entre parênteses.  
-   - **Tabela 2 — Quadro-resumo do grupo** (usando ${pessoas} pessoa(s) e ${dias} dia(s)): gere **tabela HTML** de duas colunas (Métrica | Valor) com:
-     - **Total do período (grupo)**
-     - **Total por pessoa**
-     - **Por dia (grupo)**
-     - **Por pessoa/dia**
-     Cada **Valor** deve trazer R$ e ${meta.currency_code} (entre parênteses).
-   - Se um orçamento foi informado (${orcTotal ? fmtMoneyBRL(orcTotal) : 'não informado'} total / ${orcPerPerson ? fmtMoneyBRL(orcPerPerson) : 'não informado'} p/pessoa), **use-o para ancorar as faixas**.
+<section>
+  <h2>7. Dicas Rápidas</h2>
+  <ul>
+    <!-- etiqueta local, chip/eSIM, gorjetas, tomada/voltagem, apps úteis, bairros a evitar à noite (se aplicável) -->
+  </ul>
+</section>
 
-7. **Dicas Rápidas**  
-   - Etiqueta local, chips/eSIM, gorjetas, tomada/voltagem, apps úteis, bairros a evitar (se aplicável).
-
-Observações:
-- Seja **prático** e **objetivo**.  
-- Quando a informação for muito variável, **use faixas (mín–méd–máx)** e sinalize como estimativa.  
-- **Não crie links** nem telefones.`;
+Regras finais:
+- HTML limpo, sem floreios excessivos.
+- Sem links/telefones.
+- Não invente preços exatos de passagens; use faixas realistas e indique que são estimativas.`;
 
     const messages = [
-      { role: 'system', content: 'Você é um travel planner sênior. Sempre responda em PT-BR com Markdown limpo e objetivo.' },
+      { role: 'system', content: 'Você é um travel planner sênior. Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown.' },
       { role: 'user', content: mainPrompt }
     ];
 
@@ -337,10 +370,12 @@ Observações:
       });
     }
 
-    const texto = aiData?.choices?.[0]?.message?.content || '(sem conteúdo)';
+    // Agora 'texto' já é HTML
+    const htmlFragment = aiData?.choices?.[0]?.message?.content || '';
     const payloadOut = {
       ok: true,
-      texto,
+      // manter a mesma chave usada na UI (agora contendo HTML):
+      texto: htmlFragment,
       meta: {
         destino: destinoLabel,
         region_type: meta.region_type,
@@ -358,11 +393,13 @@ Observações:
           local_to_brl: fx.quote_to_brl,
           date: fx.date
         }
-      }
+      },
+      // dica opcional para o frontend (se quiser usar):
+      render_as: 'html'
     };
 
     /* ---------- 5) Envio por e-mail (opcional) ---------- */
-    // Monta uma tabela-resumo elegante para o e-mail
+    // Monta uma tabela-resumo elegante para o e-mail (fixo)
     const emailResumoTabela = (() => {
       const row = (k, v) => `
         <tr>
@@ -391,6 +428,7 @@ Observações:
 
     if (emailDestino && SENDGRID_API_KEY && MAIL_FROM) {
       const assunto = `Roteiro • ${destinoLabel} • ${BRAND_NAME}`;
+      // usa o próprio HTML gerado (sem escapar), dentro de um container de e-mail
       const html = `
 <div style="font-family:Arial,Helvetica,sans-serif;padding:24px;background:#f6f9fc">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:760px;margin:0 auto;background:#fff;border:1px solid #eaeaea;border-radius:12px;overflow:hidden">
@@ -405,8 +443,8 @@ Observações:
       ${emailResumoTabela}
       <div style="height:14px"></div>
       <h2 style="margin:0 0 6px 0;font-size:18px;color:#111">Roteiro: ${escapeHtml(destinoLabel)}</h2>
-      <div style="white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:14px;line-height:1.55;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:12px">
-${escapeHtml(texto)}
+      <div>
+        ${htmlFragment || '<p>(sem conteúdo)</p>'}
       </div>
       <p style="color:#667085;font-size:12px;margin-top:14px">Gerado automaticamente por ${BRAND_NAME}. Valores são estimativas e podem variar conforme data e disponibilidade.</p>
     </td></tr>
@@ -415,7 +453,7 @@ ${escapeHtml(texto)}
       `.trim();
 
       try {
-        await sgMail.send({ to: emailDestino, from: MAIL_FROM, subject: assunto, text: texto, html });
+        await sgMail.send({ to: emailDestino, from: MAIL_FROM, subject: assunto, text: 'Veja seu roteiro em HTML.', html });
         payloadOut.email = { enviado: true, para: emailDestino };
       } catch (e) {
         payloadOut.email = { enviado: false, erro: e?.response?.body || String(e) };
