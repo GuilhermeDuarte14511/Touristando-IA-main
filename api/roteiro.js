@@ -240,6 +240,11 @@ Dado um destino (país, estado, região ou cidade), retorne:
       'romântica': 'Foque passeios cênicos, restaurantes charmosos e experiências a dois.'
     })[estilo] || 'Misture clássicos turísticos com tempo livre e opções flexíveis.';
 
+    // 🔳 estilos inline para tabelas bonitas no tema escuro da UI
+    const tableStyle = `style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"`;
+    const thStyle = `style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"`;
+    const tdStyle = `style="padding:8px 10px;border:1px solid #2a3358;color:#fff"`; // cor herdará do tema
+
     const mainPrompt =
 `Gere um roteiro detalhado **em PT-BR** para **${destinoLabel}**, considerando **${dias} dia(s)**, **${pessoas} pessoa(s)**, perfil **${perfil}** e estilo **${estilo}**.
 ${faixa}
@@ -252,18 +257,21 @@ Requisitos obrigatórios:
   - Formate como: \`R$ 120 (~${meta.currency_code} 21.60)\` ou apenas \`R$ 120\` se BRL.
   - Converta usando: \`BRL -> ${meta.currency_code}\` = valor_BR * ${fx.brl_to_quote || 0}, \`${meta.currency_code} -> BRL\` = valor_LOC * ${fx.quote_to_brl || 0}.
 - Não invente **preços exatos de voos** nem dados de contato; use **faixas típicas** e deixe claro que são estimativas.
+- **IMPORTANTE (TABELAS BONITAS):** para as seções **"Resumo do Planejamento"** e **"Orçamento Resumido"**, NÃO use Markdown de tabela. **Use HTML puro**:
+  \`<table ${tableStyle}><thead><tr><th ${thStyle}>...</th>...</tr></thead><tbody><tr><td ${tdStyle}>...</td>...</tr></tbody></table>\`.
+  Use o estilo exatamente como acima (atributos \`${tableStyle}\`, \`${thStyle}\`, \`${tdStyle}\`) para harmonizar com o tema escuro.
 
 Personalização:
 - ${estiloBrief}
 
 Seções (nesta ordem):
 
-0. **Resumo do Planejamento (tabela)**  
-   Monte **uma tabela de duas colunas** (Campo | Valor) contendo:  
+0. **Resumo do Planejamento (tabela HTML)**  
+   Gere **uma tabela HTML de duas colunas** (Campo | Valor) contendo:  
    - Destino; Dias; Pessoas; Perfil; Estilo;  
    - Orçamento **total** (se houver) e **por pessoa** (se houver), em R$;  
    - Moeda local (código);  
-   - Taxa utilizada (texto exatamente: "${convHeader}").
+   - Linha "Taxa utilizada" com o texto **exatamente**: "${convHeader}".
 
 1. **Visão Geral**  
    - Melhor cidade-base (e 1–2 alternativas).  
@@ -285,15 +293,14 @@ Seções (nesta ordem):
    - Para cada dia, sugira 2–4 atividades (manhã/tarde/noite).  
    - Indique custos quando pagos, **sempre** (BRL + ${meta.currency_code}).
 
-6. **Orçamento Resumido**  
-   - **Tabela 1 — Custos por dia (faixas)**: colunas para **Hospedagem**, **Alimentação**, **Transporte**, **Atrações**, **Subtotal/Dia** — todos em **BRL** e, na mesma célula, o valor convertido em ${meta.currency_code} entre parênteses.  
-   - **Tabela 2 — Quadro-resumo do grupo** (usando ${pessoas} pessoa(s) e ${dias} dia(s)):  
-     | Métrica | Valor |  
-     |---|---|  
-     | **Total do período (grupo)** | em R$ e ${meta.currency_code} |  
-     | **Total por pessoa** | em R$ e ${meta.currency_code} |  
-     | **Por dia (grupo)** | em R$ e ${meta.currency_code} |  
-     | **Por pessoa/dia** | em R$ e ${meta.currency_code} |  
+6. **Orçamento Resumido (tabelas HTML)**  
+   - **Tabela 1 — Custos por dia (faixas)**: gere **tabela HTML** com colunas **Item**, **Dia 1..Dia ${dias}**, **Subtotal/Dia** — todos em **BRL** e, na mesma célula, o valor convertido em ${meta.currency_code} entre parênteses.  
+   - **Tabela 2 — Quadro-resumo do grupo** (usando ${pessoas} pessoa(s) e ${dias} dia(s)): gere **tabela HTML** de duas colunas (Métrica | Valor) com:
+     - **Total do período (grupo)**
+     - **Total por pessoa**
+     - **Por dia (grupo)**
+     - **Por pessoa/dia**
+     Cada **Valor** deve trazer R$ e ${meta.currency_code} (entre parênteses).
    - Se um orçamento foi informado (${orcTotal ? fmtMoneyBRL(orcTotal) : 'não informado'} total / ${orcPerPerson ? fmtMoneyBRL(orcPerPerson) : 'não informado'} p/pessoa), **use-o para ancorar as faixas**.
 
 7. **Dicas Rápidas**  
