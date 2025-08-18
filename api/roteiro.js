@@ -50,6 +50,35 @@ const currencyLabel = (code = 'BRL', name = '') => {
   return `${code}${name ? ` — ${name}` : ''}${sym ? ` — símbolo: ${sym}` : ''}`;
 };
 
+// Converte strings como "R$ 5.500", "5.500,00", "5500", "5,5 mil" em Number
+function parseBudgetBR(input) {
+  if (input === undefined || input === null) return null;
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null;
+  let s = String(input).trim().toLowerCase();
+  if (!s) return null;
+  s = s.replace(/\s/g, '');
+  s = s.replace(/^r\$\s*/i, '');
+  const mil = /mil$/.test(s);
+  if (mil) s = s.replace(/mil$/, '');
+  s = s.replace(/\./g, '').replace(',', '.'); // BR -> EN
+  const v = parseFloat(s);
+  if (!Number.isFinite(v)) return null;
+  return mil ? v * 1000 : v;
+}
+
+// comparação com tolerância (2%)
+function almostEqual(a, b, tol = 0.02) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  if (a === 0 && b === 0) return true;
+  return Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b)) <= tol;
+}
+
+// PT-BR do tipo de região
+function regionLabelPT(t) {
+  const m = { city: 'Cidade', state: 'Estado', country: 'País', region: 'Região' };
+  return m[(t || '').toLowerCase()] || t || 'Região';
+}
+
 /* ----------------------- handler ----------------------- */
 
 export default async function handler(req, res) {
@@ -96,18 +125,30 @@ export default async function handler(req, res) {
     const estilo = (body.estilo || 'casual').toString();
     const emailDestino = (body.emailDestino || '').toString().trim() || null;
 
-    const orcamento = (body.orcamento !== undefined && body.orcamento !== null && body.orcamento !== '')
-      ? Number(body.orcamento) : null;
-    const orcamentoPorPessoa = (body.orcamento_por_pessoa !== undefined && body.orcamento_por_pessoa !== null && body.orcamento_por_pessoa !== '')
-      ? Number(body.orcamento_por_pessoa) : null;
+    // === orçamentos (robusto) ===
+    let orcamento = parseBudgetBR(body.orcamento);
+    let orcamentoPorPessoa = parseBudgetBR(body.orcamento_por_pessoa);
 
-    const orcTotal = (orcamento && orcamento > 0)
-      ? orcamento
-      : (orcamentoPorPessoa && pessoas > 0 ? orcamentoPorPessoa * pessoas : null);
+    let orcTotal = null;
+    let orcPerPerson = null;
 
-    const orcPerPerson = (orcamentoPorPessoa && orcamentoPorPessoa > 0)
-      ? orcamentoPorPessoa
-      : (orcTotal && pessoas > 0 ? orcTotal / pessoas : null);
+    if (orcamento && orcamentoPorPessoa) {
+      const fromPP = orcamentoPorPessoa * Math.max(1, pessoas);
+      // Corrige caso clássico ×10
+      if (almostEqual(orcamento, fromPP * 10)) {
+        orcamento = fromPP;
+      } else if (almostEqual(fromPP, orcamento * 10)) {
+        orcamentoPorPessoa = orcamento / Math.max(1, pessoas);
+      }
+      orcTotal = orcamento;
+      orcPerPerson = orcTotal && pessoas ? (orcTotal / pessoas) : orcamentoPorPessoa;
+    } else if (orcamento) {
+      orcTotal = orcamento;
+      orcPerPerson = pessoas ? (orcTotal / pessoas) : null;
+    } else if (orcamentoPorPessoa) {
+      orcPerPerson = orcamentoPorPessoa;
+      orcTotal = pessoas ? (orcPerPerson * pessoas) : null;
+    }
 
     if (!destinoEntrada) return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").' });
     if (!Number.isFinite(dias) || dias <= 0) return res.status(400).json({ error: 'O campo "dias" deve ser um número > 0.' });
@@ -330,7 +371,7 @@ Contexto:
 
     pushRow('Destino', destinoLabelOut);
     if (meta.country_name) pushRow('País', meta.country_name);
-    pushRow('Tipo de região', meta.region_type);
+    pushRow('Tipo de região', regionLabelPT(meta.region_type));
     pushRow('Dias', String(dias));
     pushRow('Pessoas', String(pessoas));
     pushRow('Perfil', perfil.charAt(0).toUpperCase()+perfil.slice(1));
