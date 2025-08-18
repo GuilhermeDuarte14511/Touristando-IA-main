@@ -1,0 +1,8 @@
+{
+  "name": "touristando-ia",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.0"
+  }
+}
