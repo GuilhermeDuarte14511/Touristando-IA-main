@@ -38,7 +38,7 @@ function fmtNumberBR(v, decimals = 2) {
   return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(v);
 }
 
-// mapa simples de símbolos (cobre os mais comuns)
+// símbolos de moeda (básico)
 const CURRENCY_SYMBOLS = {
   BRL:'R$', USD:'$', EUR:'€', GBP:'£', JPY:'¥', CNY:'¥', HKD:'$', TWD:'$', SGD:'$', CAD:'$', AUD:'$', NZD:'$',
   MXN:'$', ARS:'$', CLP:'$', COP:'$', PEN:'S/', UYU:'$U', BOB:'Bs', PYG:'₲', ZAR:'R',
@@ -50,7 +50,7 @@ const currencyLabel = (code = 'BRL', name = '') => {
   return `${code}${name ? ` — ${name}` : ''}${sym ? ` — símbolo: ${sym}` : ''}`;
 };
 
-// Converte strings como "R$ 5.500", "5.500,00", "5500", "5,5 mil" em Number
+// "R$ 5.500", "5,5 mil", "5500" -> Number
 function parseBudgetBR(input) {
   if (input === undefined || input === null) return null;
   if (typeof input === 'number') return Number.isFinite(input) ? input : null;
@@ -60,23 +60,45 @@ function parseBudgetBR(input) {
   s = s.replace(/^r\$\s*/i, '');
   const mil = /mil$/.test(s);
   if (mil) s = s.replace(/mil$/, '');
-  s = s.replace(/\./g, '').replace(',', '.'); // BR -> EN
+  s = s.replace(/\./g, '').replace(',', '.');
   const v = parseFloat(s);
   if (!Number.isFinite(v)) return null;
   return mil ? v * 1000 : v;
 }
 
-// comparação com tolerância (2%)
+// tolerância 2% para detectar x10
 function almostEqual(a, b, tol = 0.02) {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
   if (a === 0 && b === 0) return true;
   return Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b)) <= tol;
 }
 
-// PT-BR do tipo de região
 function regionLabelPT(t) {
   const m = { city: 'Cidade', state: 'Estado', country: 'País', region: 'Região' };
   return m[(t || '').toLowerCase()] || t || 'Região';
+}
+
+// extrai texto do retorno da Responses API
+function extractResponsesText(obj) {
+  try {
+    if (Array.isArray(obj?.output)) {
+      const pieces = [];
+      for (const item of obj.output) {
+        if (item?.type === 'message' && Array.isArray(item.content)) {
+          for (const c of item.content) {
+            if (c?.type === 'output_text' && typeof c.text === 'string') {
+              pieces.push(c.text);
+            }
+          }
+        } else if (item?.type === 'output_text' && typeof item.text === 'string') {
+          pieces.push(item.text);
+        }
+      }
+      return pieces.join('\n');
+    }
+  } catch { /* ignore */ }
+  // fallback p/ Chat Completions
+  return obj?.choices?.[0]?.message?.content || '';
 }
 
 /* ----------------------- handler ----------------------- */
@@ -125,7 +147,7 @@ export default async function handler(req, res) {
     const estilo = (body.estilo || 'casual').toString();
     const emailDestino = (body.emailDestino || '').toString().trim() || null;
 
-    // === orçamentos (robusto) ===
+    // orçamentos (robusto)
     let orcamento = parseBudgetBR(body.orcamento);
     let orcamentoPorPessoa = parseBudgetBR(body.orcamento_por_pessoa);
 
@@ -134,9 +156,8 @@ export default async function handler(req, res) {
 
     if (orcamento && orcamentoPorPessoa) {
       const fromPP = orcamentoPorPessoa * Math.max(1, pessoas);
-      // Corrige caso clássico ×10
       if (almostEqual(orcamento, fromPP * 10)) {
-        orcamento = fromPP;
+        orcamento = fromPP; // corrigia 110.000 -> 11.000
       } else if (almostEqual(fromPP, orcamento * 10)) {
         orcamentoPorPessoa = orcamento / Math.max(1, pessoas);
       }
@@ -153,7 +174,7 @@ export default async function handler(req, res) {
     if (!destinoEntrada) return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").' });
     if (!Number.isFinite(dias) || dias <= 0) return res.status(400).json({ error: 'O campo "dias" deve ser um número > 0.' });
 
-    /* ---------- 1) Normalizar destino + moeda ---------- */
+    /* ---------- 1) Normalizar destino + moeda (Chat Completions JSON) ---------- */
     const classifyMsg = [
       { role: 'system', content:
 `Você extrai metadados geográficos e de moeda. Responda SOMENTE com JSON válido.
@@ -233,7 +254,7 @@ Campos:
       return partes.join(' ');
     })();
 
-    /* ---------- 3) Prompt principal (seções 1–7) + BUSCA WEB ---------- */
+    /* ---------- 3) Prompt principal (1–7) ---------- */
     const destinoLabel =
       (meta.normalized_name && meta.country_name && meta.country_name !== meta.normalized_name)
         ? `${meta.normalized_name}, ${meta.country_name}`
@@ -247,18 +268,11 @@ Campos:
     const tableStyle = `style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"`;
     const thStyle = `style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"`;
 
-    // IMPORTANTE: pedimos somente as seções 1–7; o Resumo (0) será montado pelo backend
     const mainPrompt =
 `Você é um planner de viagens sênior.
 Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown, sem <script> e sem <style>.
 Use BUSCA NA WEB quando necessário para trazer lugares reais e atualizados.
-Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></section> com links clicáveis (no máximo 12, domínios confiáveis).
-
-Preferências de busca:
-- Priorize: sites oficiais de turismo, Google Maps/Travel, TripAdvisor, jornais/secretarias de turismo, guias reconhecidos.
-- Evite: sites obscuros, spam, páginas sem info útil.
-
-Formato do conteúdo (NÃO gere "0. Resumo do Planejamento" — o sistema insere isso):
+Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></section> com links (máx. 12, domínios confiáveis).
 
 <section>
   <h2>1. Visão Geral</h2>
@@ -268,21 +282,21 @@ Formato do conteúdo (NÃO gere "0. Resumo do Planejamento" — o sistema insere
 <section>
   <h2>2. Atrações Imperdíveis</h2>
   <ul>
-    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Inclua link da fonte principal em <small>Fonte: <a href="...">domínio</a></small>. -->
+    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Coloque <small>Fonte: <a href="...">domínio</a></small>. -->
   </ul>
 </section>
 
 <section>
   <h2>3. Onde comer & beber</h2>
   <ul>
-    <!-- 6–12 lugares (restaurantes, cafés, bares) com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
+    <!-- 6–12 lugares com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
   </ul>
 </section>
 
 <section>
   <h2>4. Hospedagem Recomendada</h2>
   <ul>
-    <!-- 6–10 hotéis/pousadas OU bairros com exemplos; categoria (econômico/médio/superior), diária média (BRL + ${meta.currency_code}); <small>Fonte...</small>; sem telefones. -->
+    <!-- 6–10 hotéis/pousadas OU bairros com exemplos; categoria (econômico/médio/superior), diária média (BRL + ${meta.currency_code}); <small>Fonte...</small>. -->
   </ul>
 </section>
 
@@ -295,7 +309,7 @@ Formato do conteúdo (NÃO gere "0. Resumo do Planejamento" — o sistema insere
 
 <section>
   <h2>6. Roteiro Dia a Dia</h2>
-  <!-- Para D1..D${dias}, gerar <h3>Dia X</h3> com 2–4 atividades (manhã/tarde/noite). Cite custos quando pagos (BRL + ${meta.currency_code}) e coloque 1–2 links úteis por dia dentro de <small>Fonte...</small>. -->
+  <!-- Para D1..D${dias}, gerar <h3>Dia X</h3> com 2–4 atividades (manhã/tarde/noite). Cite custos quando pagos (BRL + ${meta.currency_code}) e 1–2 links úteis/dia em <small>Fonte...</small>. -->
 </section>
 
 <section>
@@ -321,7 +335,7 @@ Formato do conteúdo (NÃO gere "0. Resumo do Planejamento" — o sistema insere
 
 <section>
   <h2>Fontes consultadas</h2>
-  <ul><!-- liste até 12 links (texto curto com o domínio) --></ul>
+  <ul><!-- até 12 links --></ul>
 </section>
 
 Regras de moeda:
@@ -341,38 +355,61 @@ Contexto:
 - País: ${meta.country_name || '(não identificado)'}
 `;
 
-    const messages = [
-      { role: 'system', content: 'Você é um travel planner sênior. Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown.' },
-      { role: 'user', content: mainPrompt }
-    ];
+    /* ---------- 4) Geração com Responses API + web_search (fallback sem busca) ---------- */
+    async function generateHtmlWithSearch(inputText) {
+      // tentativa A — Responses API com busca
+      const resp = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          input: inputText,
+          tools: [{ type: 'web_search' }],
+          tool_choice: 'auto'
+        })
+      }, 90000);
 
-    /* ---------- 4) Chamada OpenAI (com web search) ---------- */
-    const modelSearch = 'gpt-4o-mini-search-preview'; // especializado em busca
-    const aiResp = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: modelSearch,
-        temperature: 0.7,
-        messages,
-        tools: [{ type: 'web_search' }],   // habilita a busca
-        tool_choice: 'auto'                // o modelo decide quando usar
-      })
-    }, 90000);
+      const data = await safeJson(resp);
+      if (resp.ok) {
+        return { html: extractResponsesText(data).trim(), usedSearch: true, raw: data };
+      }
 
-    const aiData = await safeJson(aiResp);
-    if (!aiResp.ok) {
-      return res.status(aiResp.status).json({ error: aiData?.error?.message || aiData?._raw || 'Falha na OpenAI' });
+      // tentativa B — sem web_search (Responses)
+      if (data?.error?.message?.toLowerCase?.().includes('web_search')) {
+        const respNoSearch = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4o-mini', input: inputText })
+        }, 90000);
+        const dataNo = await safeJson(respNoSearch);
+        if (respNoSearch.ok) {
+          return { html: extractResponsesText(dataNo).trim(), usedSearch: false, raw: dataNo };
+        }
+        // fallback final — Chat Completions
+        const cc = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages: [
+            { role:'system', content:'Você é um travel planner sênior. Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown.' },
+            { role:'user', content: inputText }
+          ]})
+        }, 90000);
+        const ccData = await safeJson(cc);
+        if (!cc.ok) throw new Error(ccData?.error?.message || ccData?._raw || 'Falha na OpenAI');
+        return { html: (ccData?.choices?.[0]?.message?.content || '').trim(), usedSearch: false, raw: ccData };
+      }
+
+      // erro genérico
+      throw new Error(data?.error?.message || data?._raw || 'Falha na OpenAI');
     }
 
-    // Conteúdo retornado pela IA
-    const aiHtml = (aiData?.choices?.[0]?.message?.content || '').trim();
+    const gen = await generateHtmlWithSearch(mainPrompt);
 
-    // Se a IA incluiu <div class="trip-plan">, extraímos o miolo para evitar aninhamento duplo
-    const innerMatch = aiHtml.match(/<div[^>]*class=["'][^"']*trip-plan[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
-    const aiInner = innerMatch ? innerMatch[1] : aiHtml;
+    // Se a IA devolveu <div class="trip-plan">, evita aninhar
+    const innerMatch = gen.html.match(/<div[^>]*class=["'][^"']*trip-plan[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    const aiInner = innerMatch ? innerMatch[1] : gen.html;
 
-    // Montamos a Seção 0 de forma determinística (com campos completos)
+    /* ---------- 5) Seção 0: Resumo (determinística) ---------- */
     const tableStyleInline = 'style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"';
     const thStyleInline = 'style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"';
     const tdStyleInline = 'style="padding:8px 10px;border:1px solid #2a3358;color:#fff"';
@@ -383,8 +420,7 @@ Contexto:
 
     const destinoLabelOut =
       (meta.normalized_name && meta.country_name && meta.country_name !== meta.normalized_name)
-        ? `${meta.normalized_name}`
-        : (meta.normalized_name || destinoEntrada);
+        ? `${meta.normalized_name}` : (meta.normalized_name || destinoEntrada);
 
     pushRow('Destino', destinoLabelOut);
     if (meta.country_name) pushRow('País', meta.country_name);
@@ -397,6 +433,7 @@ Contexto:
     if (orcPerPerson && orcPerPerson>0) pushRow('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson));
     pushRow('Moeda local', currencyLabel(meta.currency_code, meta.currency_name));
     pushRow('Taxa utilizada', convHeader);
+    if (gen.usedSearch) pushRow('Pesquisa na web', 'Ativada (Responses API)');
 
     const section0 = `
 <section>
@@ -407,7 +444,7 @@ Contexto:
   </table>
 </section>`.trim();
 
-    // Fragmento final único
+    // Fragmento final
     const finalHtmlFragment = `
 <div class="trip-plan" data-render="roteiro">
   ${section0}
@@ -421,7 +458,7 @@ Contexto:
 
     const payloadOut = {
       ok: true,
-      texto: finalHtmlFragment,          // agora sempre HTML completo e bonito
+      texto: finalHtmlFragment,
       meta: {
         destino: destinoLabelFull,
         region_type: meta.region_type,
@@ -443,7 +480,7 @@ Contexto:
       render_as: 'html'
     };
 
-    /* ---------- 5) E-mail (opcional) ---------- */
+    /* ---------- 6) E-mail (opcional) ---------- */
     const emailResumoTabela = (() => {
       const row = (k, v) => `
         <tr>
@@ -460,6 +497,7 @@ Contexto:
       rows.push(row('Taxa usada', convHeader));
       if (orcTotal && orcTotal > 0) rows.push(row('Orçamento total', fmtMoneyBRL(orcTotal)));
       if (orcPerPerson && orcPerPerson > 0) rows.push(row('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson)));
+      if (gen.usedSearch) rows.push(row('Pesquisa na web', 'Ativada (Responses API)'));
       return `
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #eaeaea;border-radius:8px;overflow:hidden">
           ${rows.join('')}
