@@ -35,10 +35,7 @@
       background-attachment: fixed;
     }
 
-    .form-control:disabled{
-      background-color: #0e1326 !important;
-      opacity: 1 !important;
-    }
+    .form-control:disabled{ background-color:#0e1326!important; opacity:1!important }
 
     /* ==== força todos os textos a ficarem brancos ==== */
     a, a:hover, a:focus { color:#fff; text-decoration: underline dotted; }
@@ -46,11 +43,28 @@
     .form-text, .link-secondary, .text-white-50,
     .small, small, .tiny, .badge, label, .nav-link { color:#fff !important; }
 
-    /* markdown */
+    /* markdown legacy */
     .md-out{ color:#fff }
     .md-out a{ color:#fff; text-decoration: underline }
     .md-out code, .md-out pre { color:#fff; background:#0e1326; border-radius:8px; }
     .md-out pre{ padding:12px; overflow:auto; }
+
+    /* ======== ESTILO PARA HTML GERADO PELA IA ======== */
+    .trip-plan{ line-height:1.55 }
+    .trip-plan h2{ font-size:1.25rem; margin:14px 0 10px; font-weight:800 }
+    .trip-plan h3{ font-size:1.1rem; margin:10px 0 8px; font-weight:700 }
+    .trip-plan p{ color:#fff; opacity:.95; margin:.25rem 0 .5rem }
+    .trip-plan ul{ padding-left:1.1rem; margin:.25rem 0 .6rem }
+    .trip-plan li{ margin:.35rem 0 }
+
+    /* cartões/seções do HTML da IA */
+    .trip-plan section{ background:linear-gradient(180deg,#0f1428,#0b1122); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin:12px 0; box-shadow:0 6px 24px rgba(0,0,0,.22) }
+
+    /* tabelas do HTML da IA (caso venham sem inline) */
+    .trip-plan table{ width:100%; border-collapse:collapse; margin:8px 0; font-size:.98rem }
+    .trip-plan th{ text-align:left; padding:8px 10px; border:1px solid #2a3358; background:#0e1429; color:#fff }
+    .trip-plan td{ padding:8px 10px; border:1px solid #2a3358; color:#fff }
+    .trip-plan tbody tr:nth-child(even) td{ background:#0e1227 }
 
     /* HERO */
     .hero{ position:relative; overflow:hidden; border-bottom:1px solid var(--border);
@@ -68,10 +82,7 @@
     .orb.o1{ left:8%; top:10%; animation-delay: 0s }
     .orb.o2{ right:12%; top:30%; animation-delay: 1.6s }
     .orb.o3{ left:22%; bottom:-40px; width:220px; height:220px; animation-delay: .8s }
-    @keyframes floatY{
-      0%,100%{ transform: translateY(0px) }
-      50%{ transform: translateY(-28px) }
-    }
+    @keyframes floatY{ 0%,100%{ transform: translateY(0px) } 50%{ transform: translateY(-28px) } }
 
     .glass{ background: rgba(255,255,255,.03); border:1px solid var(--border);
       backdrop-filter: blur(10px); box-shadow: 0 12px 48px rgba(0,0,0,.28); border-radius: 18px;
@@ -371,7 +382,7 @@
             <div class="progress fake" role="progressbar" aria-valuemin="0" aria-valuemax="100">
               <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:20%"></div>
             </div>
-            <div class="tiny mt-2" id="loadingMsg"><i class="fa-regular fa-clock me-1"></i>Aguarde — montando seu roteiro…</div>
+            <div class="tiny mt-2" id="loadingMsg"><i class="fa-regular fa-clock me-1"></i>Aguarde — montando seu roteiro em HTML…</div>
           </div>
 
           <article id="result" class="md-out" style="min-height:220px">
@@ -441,7 +452,7 @@
           $email = $('#email');
 
     // ========= state =========
-    let current = 1, isLoading = false, lastMd = '', lastHtml = '';
+    let current = 1, isLoading = false, lastMd = '', lastHtml = '', contentIsHtml = false;
     $stepTotal.text(totalSteps);
 
     // ========= helpers =========
@@ -483,7 +494,6 @@
         }
       }
 
-      // mantém os resumos em sincronia
       updateSummary();
       buildReview();
     }
@@ -506,10 +516,7 @@
       setTimeout(()=> $steps.removeClass('animate__animated animate__fadeInUp'), 400);
       $stepNow.text(n);
       // step dots
-      $('.step-dot').each(function(){
-        const i = +$(this).data('step');
-        $(this).toggleClass('active', i<=n);
-      });
+      $('.step-dot').each(function(){ const i = +$(this).data('step'); $(this).toggleClass('active', i<=n); });
       // progress %
       const pct = Math.max(12, Math.round((n-1)/(totalSteps-1)*100));
       $progressBar.css('width', pct+'%');
@@ -520,10 +527,7 @@
       clearAlert();
       buildReview();
       // focus
-      setTimeout(()=> {
-        const $input = $steps.filter(`[data-step="${n}"]`).find('input,select').first();
-        $input.trigger('focus');
-      }, 80);
+      setTimeout(()=> { const $input = $steps.filter(`[data-step="${n}"]`).find('input,select').first(); $input.trigger('focus'); }, 80);
     }
 
     function buildReview(){
@@ -543,26 +547,11 @@
 
     function validateStep(n){
       if(n===1 && !$destino.val().trim()) { setAlert('Informe o destino (país/estado/cidade).'); return false; }
-      if(n===2){
-        const d = +($dias.val()||0);
-        if(!Number.isFinite(d) || d<=0){ setAlert('Informe um número de dias válido.'); return false; }
-      }
-      if(n===3){
-        const p = +($pessoas.val()||0);
-        if(!Number.isFinite(p) || p<=0){ setAlert('Informe a quantidade de pessoas.'); return false; }
-      }
-      if(n===4){
-        const v = $orcPessoa.val();
-        if(v && +v<0){ setAlert('Orçamento por pessoa não pode ser negativo.'); return false; }
-      }
-      if(n===5){
-        const v = $orc.val();
-        if(v && +v<0){ setAlert('Orçamento total não pode ser negativo.'); return false; }
-      }
-      if(n===7){
-        const e = $email.val().trim();
-        if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; }
-      }
+      if(n===2){ const d = +($dias.val()||0); if(!Number.isFinite(d) || d<=0){ setAlert('Informe um número de dias válido.'); return false; } }
+      if(n===3){ const p = +($pessoas.val()||0); if(!Number.isFinite(p) || p<=0){ setAlert('Informe a quantidade de pessoas.'); return false; } }
+      if(n===4){ const v = $orcPessoa.val(); if(v && +v<0){ setAlert('Orçamento por pessoa não pode ser negativo.'); return false; } }
+      if(n===5){ const v = $orc.val(); if(v && +v<0){ setAlert('Orçamento total não pode ser negativo.'); return false; } }
+      if(n===7){ const e = $email.val().trim(); if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; } }
       return true;
     }
 
@@ -598,7 +587,7 @@
       'Buscando moeda e país do destino…',
       'Consultando câmbio para BRL…',
       'Montando atrações e hospedagens…',
-      'Finalizando roteiro em Markdown…'
+      'Finalizando roteiro em HTML…'
     ];
     function setLoading(on){
       isLoading = on;
@@ -628,14 +617,9 @@
     // ====== persistência local ======
     function persistState(){
       const st = {
-        destino:$destino.val(),
-        dias:$dias.val(),
-        pessoas:$pessoas.val(),
-        orcPessoa:$orcPessoa.val(),
-        orc:$orc.val(),
-        perfil:$perfil.val(),
-        estilo:$estilo.val(),
-        email:$email.val()
+        destino:$destino.val(), dias:$dias.val(), pessoas:$pessoas.val(),
+        orcPessoa:$orcPessoa.val(), orc:$orc.val(), perfil:$perfil.val(),
+        estilo:$estilo.val(), email:$email.val()
       };
       localStorage.setItem('touristando_state', JSON.stringify(st));
     }
@@ -673,10 +657,7 @@
       document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       try{
-        const resp = await fetch('/api/roteiro', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
-        });
+        const resp = await fetch('/api/roteiro', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const data = await resp.json();
         if(!resp.ok) throw new Error(data?.error || 'Falha ao gerar roteiro');
 
@@ -691,33 +672,45 @@
             const val = Number(data.meta.fx.brl_to_local).toFixed(4);
             $metaChips.append(mkChip('fa-solid fa-scale-balanced', `1 BRL = ${val} ${data.meta.currency_code}`));
           }
-          if(data.meta.fx && data.meta.fx.date){
-            $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${data.meta.fx.date}`));
-          }
-          if(data.meta.orcamento_por_pessoa){
-            $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(data.meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`));
-          }
-          if(data.meta.orcamento){
-            $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(data.meta.orcamento).toLocaleString('pt-BR')}`));
-          }
+          if(data.meta.fx && data.meta.fx.date){ $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${data.meta.fx.date}`)); }
+          if(data.meta.orcamento_por_pessoa){ $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(data.meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`)); }
+          if(data.meta.orcamento){ $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(data.meta.orcamento).toLocaleString('pt-BR')}`)); }
         }
 
-        // Render Markdown (sanitizado) + guardamos versão MD
-        lastMd = (data.texto || '').trim() || '(sem conteúdo)';
-        marked.setOptions({ mangle:false, headerIds:false });
-        const renderer = new marked.Renderer();
-        const _link = renderer.link;
-        renderer.link = function(href,title,text){
-          const html = _link.call(this, href, title, text);
-          return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
-        };
-        const unsafe = marked.parse(lastMd, { renderer });
-        lastHtml = DOMPurify.sanitize(unsafe);
-        $res.html(lastHtml);
-        $resRaw.find('code').text(lastMd);
+        // ===== Renderização do conteúdo =====
+        const raw = (data.texto || '').trim();
+        const looksLikeHtml = /^\s*</.test(raw);
+        const purifyHtmlOpts = { ALLOW_DATA_ATTR: true, ADD_ATTR: ['style'] };
+
+        // Se o backend sinalizar 'render_as: html' ou se texto começar com '<', tratamos como HTML
+        if (data.render_as === 'html' || looksLikeHtml) {
+          contentIsHtml = true;
+          lastMd = '';
+          lastHtml = DOMPurify.sanitize(raw, purifyHtmlOpts);
+          $res.html(lastHtml);
+          $res.addClass('trip-plan-container'); // (gancho se precisar)
+          // mostrar o código bruto no toggle Raw
+          $resRaw.find('code').text(raw);
+        } else {
+          // Fallback: Markdown -> HTML
+          contentIsHtml = false;
+          lastMd = raw || '(sem conteúdo)';
+          marked.setOptions({ mangle:false, headerIds:false });
+          const renderer = new marked.Renderer();
+          const _link = renderer.link;
+          renderer.link = function(href,title,text){ const html = _link.call(this, href, title, text); return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" '); };
+          const unsafe = marked.parse(lastMd, { renderer });
+          lastHtml = DOMPurify.sanitize(unsafe);
+          $res.html(lastHtml);
+          $resRaw.find('code').text(lastMd);
+        }
+
+        // Alternar botões conforme tipo de conteúdo
+        $btnCopy.toggle(!contentIsHtml);          // Copiar MD só se for MD
+        $btnDownload.toggle(!contentIsHtml);      // .md só se for MD
+        $btnCopyHTML.toggle(true);                // Sempre disponível (HTML renderizado)
 
         confetti({ particleCount: 90, spread: 90, origin:{ y: 0.2 }});
-
         $('#toastText').text('Roteiro gerado!');
         toast.show();
       }catch(err){
@@ -731,19 +724,13 @@
 
     // Ações do resultado
     $btnCopy.on('click', async ()=>{
-      try{
-        await navigator.clipboard.writeText(lastMd || ($res.text() || ''));
-        $('#toastText').text('Markdown copiado!');
-        toast.show();
-      } catch(_){ setAlert('Não foi possível copiar.'); }
+      try{ await navigator.clipboard.writeText(lastMd || ($res.text() || '')); $('#toastText').text('Markdown copiado!'); toast.show(); }
+      catch(_){ setAlert('Não foi possível copiar.'); }
     });
 
     $btnCopyHTML.on('click', async ()=>{
-      try{
-        await navigator.clipboard.writeText(lastHtml || $res.html() || '');
-        $('#toastText').text('HTML copiado!');
-        toast.show();
-      } catch(_){ setAlert('Não foi possível copiar HTML.'); }
+      try{ await navigator.clipboard.writeText(lastHtml || $res.html() || ''); $('#toastText').text('HTML copiado!'); toast.show(); }
+      catch(_){ setAlert('Não foi possível copiar HTML.'); }
     });
 
     $btnDownload.on('click', ()=>{
@@ -762,32 +749,19 @@
           <h2 style="margin-top:0">Roteiro — ${$destino.val() || 'Destino'}</h2>
           <div>${lastHtml || $res.html() || ''}</div>
         </div>`;
-      const opt = {
-        margin: 10,
-        filename: `roteiro_${($destino.val()||'destino').toString().replace(/[^\w\-]+/g,'_')}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
+      const opt = { margin: 10, filename: `roteiro_${($destino.val()||'destino').toString().replace(/[^\w\-]+/g,'_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
       html2pdf().from(element).set(opt).save();
     });
 
     $btnToggleRaw.on('click', ()=>{
       const rawMode = !$resRaw.hasClass('hidden');
-      if(rawMode){
-        $resRaw.addClass('hidden'); $res.removeClass('hidden');
-      }else{
-        $res.addClass('hidden'); $resRaw.removeClass('hidden');
-      }
+      if(rawMode){ $resRaw.addClass('hidden'); $res.removeClass('hidden'); }
+      else{ $res.addClass('hidden'); $resRaw.removeClass('hidden'); }
     });
 
     // alternar fonte maior no resultado
     let zoomed = false;
-    $btnZoom.on('click', ()=>{
-      zoomed = !zoomed;
-      $res.css('font-size', zoomed ? '1.08rem' : '');
-      $res.find('h1,h2').css('font-size', zoomed ? '' : '');
-    });
+    $btnZoom.on('click', ()=>{ zoomed = !zoomed; $res.css('font-size', zoomed ? '1.08rem' : ''); $res.find('h1,h2').css('font-size', zoomed ? '' : ''); });
 
     // Back to top
     const $backTop = $('#backTop');
@@ -805,10 +779,8 @@
       els.forEach(el=>{
         el.addEventListener('mousemove', (e)=>{
           const r = el.getBoundingClientRect();
-          const cx = r.left + r.width/2;
-          const cy = r.top + r.height/2;
-          const dx = (e.clientX - cx) / (r.width/2);
-          const dy = (e.clientY - cy) / (r.height/2);
+          const cx = r.left + r.width/2; const cy = r.top + r.height/2;
+          const dx = (e.clientX - cx) / (r.width/2); const dy = (e.clientY - cy) / (r.height/2);
           el.style.transform = `rotateX(${(-dy*3).toFixed(2)}deg) rotateY(${(dx*3).toFixed(2)}deg) translateY(-2px)`;
         });
         el.addEventListener('mouseleave', ()=>{ el.style.transform = ''; });

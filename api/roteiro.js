@@ -61,6 +61,7 @@ export default async function handler(req, res) {
 
   // 🔑 OpenAI
   const OPENAI_API_KEY = env('OPENAI_API_KEY');
+  const OPENAI_API_BASE = env('OPENAI_API_BASE', 'https://api.openai.com/v1');
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no projeto (Vercel).' });
   }
@@ -87,7 +88,7 @@ export default async function handler(req, res) {
       } catch { body = {}; }
     }
 
-    // Entrada: aceita destino (país/estado/região/cidade). Mantém compat com "pais".
+    // Entrada
     const destinoEntrada =
       body.destino?.toString().trim() ||
       body.pais?.toString().trim() ||
@@ -142,7 +143,7 @@ Dado um destino (país, estado, região ou cidade), retorne:
       { role: 'user', content: `Destino: ${destinoEntrada}` }
     ];
 
-    const classifyResp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+    const classifyResp = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -350,7 +351,7 @@ Regras finais:
     ];
 
     /* ---------- 4) Chamada OpenAI (conteúdo) ---------- */
-    const aiResp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+    const aiResp = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
