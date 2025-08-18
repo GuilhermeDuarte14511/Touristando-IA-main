@@ -41,7 +41,7 @@ function fmtNumberBR(v, decimals = 2) {
 // mapa simples de símbolos (cobre os mais comuns)
 const CURRENCY_SYMBOLS = {
   BRL:'R$', USD:'$', EUR:'€', GBP:'£', JPY:'¥', CNY:'¥', HKD:'$', TWD:'$', SGD:'$', CAD:'$', AUD:'$', NZD:'$',
-  MXN:'$', ARS:'$', CLP:'$', COP:'$', PEN:'S/', UYU:'$U', BOB:'Bs', PYG:'₲', UYU2:'$', ZAR:'R',
+  MXN:'$', ARS:'$', CLP:'$', COP:'$', PEN:'S/', UYU:'$U', BOB:'Bs', PYG:'₲', ZAR:'R',
   CHF:'CHF', DKK:'kr', NOK:'kr', SEK:'kr', PLN:'zł', CZK:'Kč', HUF:'Ft', RON:'lei',
   TRY:'₺', ILS:'₪', AED:'د.إ', SAR:'﷼', QAR:'﷼', KWD:'KD', BHD:'BD', INR:'₹', THB:'฿', KRW:'₩', IDR:'Rp', MYR:'RM', PHP:'₱'
 };
@@ -233,7 +233,7 @@ Campos:
       return partes.join(' ');
     })();
 
-    /* ---------- 3) Prompt principal (seções 1–7) ---------- */
+    /* ---------- 3) Prompt principal (seções 1–7) + BUSCA WEB ---------- */
     const destinoLabel =
       (meta.normalized_name && meta.country_name && meta.country_name !== meta.normalized_name)
         ? `${meta.normalized_name}, ${meta.country_name}`
@@ -251,9 +251,14 @@ Campos:
     const mainPrompt =
 `Você é um planner de viagens sênior.
 Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown, sem <script> e sem <style>.
-Se possível, envolva tudo em <div class="trip-plan" data-render="roteiro">…</div>.
+Use BUSCA NA WEB quando necessário para trazer lugares reais e atualizados.
+Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></section> com links clicáveis (no máximo 12, domínios confiáveis).
 
-Gere SOMENTE as seções abaixo (NÃO gere "0. Resumo do Planejamento", pois ele será inserido pelo sistema):
+Preferências de busca:
+- Priorize: sites oficiais de turismo, Google Maps/Travel, TripAdvisor, jornais/secretarias de turismo, guias reconhecidos.
+- Evite: sites obscuros, spam, páginas sem info útil.
+
+Formato do conteúdo (NÃO gere "0. Resumo do Planejamento" — o sistema insere isso):
 
 <section>
   <h2>1. Visão Geral</h2>
@@ -263,31 +268,38 @@ Gere SOMENTE as seções abaixo (NÃO gere "0. Resumo do Planejamento", pois ele
 <section>
   <h2>2. Atrações Imperdíveis</h2>
   <ul>
-    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, faixa de preço (BRL + ${meta.currency_code}) -->
+    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Inclua link da fonte principal em <small>Fonte: <a href="...">domínio</a></small>. -->
   </ul>
 </section>
 
 <section>
-  <h2>3. Hospedagem Recomendada</h2>
+  <h2>3. Onde comer & beber</h2>
   <ul>
-    <!-- 6–10 itens: bairro/zona, categoria (econômico/médio/superior) e diária média (BRL + ${meta.currency_code}); sem links/telefones -->
+    <!-- 6–12 lugares (restaurantes, cafés, bares) com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
   </ul>
 </section>
 
 <section>
-  <h2>4. Transporte Local</h2>
+  <h2>4. Hospedagem Recomendada</h2>
   <ul>
-    <!-- metrô/ônibus/app/táxi/passe/trem; faixas de preço por trecho/diária; trajetos típicos aeroporto↔centro etc. -->
+    <!-- 6–10 hotéis/pousadas OU bairros com exemplos; categoria (econômico/médio/superior), diária média (BRL + ${meta.currency_code}); <small>Fonte...</small>; sem telefones. -->
   </ul>
 </section>
 
 <section>
-  <h2>5. Roteiro Dia a Dia</h2>
-  <!-- Para D1..D${dias}, gerar <h3>Dia X</h3> com 2–4 atividades (manhã/tarde/noite); custos quando pagos (BRL + ${meta.currency_code}). -->
+  <h2>5. Transporte Local</h2>
+  <ul>
+    <!-- metrô/ônibus/app/táxi/passe/trem; preços por trecho/diária; trajetos aeroporto↔centro; <small>Fonte...</small>. -->
+  </ul>
 </section>
 
 <section>
-  <h2>6. Orçamento Resumido</h2>
+  <h2>6. Roteiro Dia a Dia</h2>
+  <!-- Para D1..D${dias}, gerar <h3>Dia X</h3> com 2–4 atividades (manhã/tarde/noite). Cite custos quando pagos (BRL + ${meta.currency_code}) e coloque 1–2 links úteis por dia dentro de <small>Fonte...</small>. -->
+</section>
+
+<section>
+  <h2>7. Orçamento Resumido</h2>
   <h3>Tabela 1 — Custos por dia (faixas)</h3>
   <table ${tableStyle}>
     <thead>
@@ -308,10 +320,8 @@ Gere SOMENTE as seções abaixo (NÃO gere "0. Resumo do Planejamento", pois ele
 </section>
 
 <section>
-  <h2>7. Dicas Rápidas</h2>
-  <ul>
-    <!-- etiqueta local, chip/eSIM, gorjetas, tomada/voltagem, apps úteis, bairros a evitar à noite (se aplicável) -->
-  </ul>
+  <h2>Fontes consultadas</h2>
+  <ul><!-- liste até 12 links (texto curto com o domínio) --></ul>
 </section>
 
 Regras de moeda:
@@ -336,12 +346,19 @@ Contexto:
       { role: 'user', content: mainPrompt }
     ];
 
-    /* ---------- 4) Chamada OpenAI ---------- */
+    /* ---------- 4) Chamada OpenAI (com web search) ---------- */
+    const modelSearch = 'gpt-4o-mini-search-preview'; // especializado em busca
     const aiResp = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages })
-    }, 60000);
+      body: JSON.stringify({
+        model: modelSearch,
+        temperature: 0.7,
+        messages,
+        tools: [{ type: 'web_search' }],   // habilita a busca
+        tool_choice: 'auto'                // o modelo decide quando usar
+      })
+    }, 90000);
 
     const aiData = await safeJson(aiResp);
     if (!aiResp.ok) {
