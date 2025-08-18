@@ -39,9 +39,16 @@ function fmtDate(d = new Date()) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
 }
 
-// moeda BRL
+// moeda BRL (sem casas para faixas “vitrine”)
 function fmtMoneyBRL(v) {
   return new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL', maximumFractionDigits:0 }).format(v);
+}
+// número BR com casas fixas (para equivalência de câmbio)
+function fmtNumberBR(v, decimals = 2) {
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(v);
 }
 
 /* ----------------------- handler ----------------------- */
@@ -128,7 +135,7 @@ Dado um destino (país, estado, região ou cidade), retorne:
   "normalized_name": string,               // Nome normalizado (ex.: "Califórnia", "Lisboa", "Japão")
   "region_type": "country"|"state"|"city"|"region",
   "country_name": string,                  // País ao qual pertence
-  "country_code": string,                  // ISO-3166-1 alfa-2, se souber (ex.: "US","BR","PT")
+  "country_code": string,                  // ISO-3166-1 alfa-2 (ex.: "US","BR","PT")
   "currency_code": string,                 // ISO 4217 principal usada lá (ex.: "USD","EUR","BRL")
   "currency_name": string                  // Nome da moeda
 }` },
@@ -219,7 +226,7 @@ Dado um destino (país, estado, região ou cidade), retorne:
 
     /* ---------- 3) Prompt principal (atrações, hotéis, transportes, custos) ---------- */
     const convHeader = (fx.quote !== 'BRL' && fx.brl_to_quote)
-      ? `Taxa usada (exchangerate.host, ${fx.date}): 1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ ${fmtMoneyBRL(fx.quote_to_brl)})`
+      ? `Taxa usada (exchangerate.host, ${fx.date}): 1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)})`
       : `Moeda local: BRL. Mostre os valores apenas em R$.`;
 
     const destinoLabel =
@@ -244,22 +251,31 @@ Requisitos obrigatórios:
   - Se a moeda local for BRL, use somente R$.
   - Formate como: \`R$ 120 (~${meta.currency_code} 21.60)\` ou apenas \`R$ 120\` se BRL.
   - Converta usando: \`BRL -> ${meta.currency_code}\` = valor_BR * ${fx.brl_to_quote || 0}, \`${meta.currency_code} -> BRL\` = valor_LOC * ${fx.quote_to_brl || 0}.
-- Não invente preços exatos de voos ou hotéis específicos; use **faixas típicas** e deixe claro que são estimativas.
+- Não invente **preços exatos de voos** nem dados de contato; use **faixas típicas** e deixe claro que são estimativas.
 
 Personalização:
 - ${estiloBrief}
 
 Seções (nesta ordem):
+
+0. **Resumo do Planejamento (tabela)**  
+   Monte **uma tabela de duas colunas** (Campo | Valor) contendo:  
+   - Destino; Dias; Pessoas; Perfil; Estilo;  
+   - Orçamento **total** (se houver) e **por pessoa** (se houver), em R$;  
+   - Moeda local (código);  
+   - Taxa utilizada (texto exatamente: "${convHeader}").
+
 1. **Visão Geral**  
    - Melhor cidade-base (e 1–2 alternativas).  
    - Melhor época e clima; segurança e deslocamento entre bairros/cidades.  
 
-2. **Atrações Imperdíveis**  
-   - Liste **8–15** atrações com breve descrição e **faixa de preço** (se paga) **nos dois formatos de moeda**.
+2. **Atrações Imperdíveis (8–15)**  
+   - Para cada atração, inclua: **nome**, **bairro/zona**, **breve descrição**, **tempo médio de visita** e **faixa de preço** (se paga) **em BRL + ${meta.currency_code}**.
 
 3. **Hospedagem Recomendada (6–10)**  
-   - Liste hotéis/pousadas ou **bairros recomendados** com **categoria** (econômico/médio/superior) e **diária média** (BRL + ${meta.currency_code}).  
-   - Se não tiver certeza de nomes, use **bairros/zonas e cadeias comuns**. **Não crie links** nem telefones.
+   - Liste **nomes de hotéis/pousadas** quando houver segurança razoável (evite nomes obscuros). Caso contrário, liste **bairros/zonas** e **cadeias comuns** (ex.: Ibis, Holiday Inn, etc.).  
+   - Para cada item, inclua: **bairro/zona**, **categoria** (econômico / médio / superior) e **diária média** (BRL + ${meta.currency_code}).  
+   - **Não crie links** nem telefones. Não invente endereços completos — apenas bairro/zona.
 
 4. **Transporte Local**  
    - Opções (metrô/ônibus/app/táxi/passe/trem interurbano), **faixas de preço** por trecho/diária (BRL + ${meta.currency_code}).  
@@ -267,7 +283,7 @@ Seções (nesta ordem):
 
 5. **Roteiro Dia a Dia (D1..D${dias})**  
    - Para cada dia, sugira 2–4 atividades (manhã/tarde/noite).  
-   - Informe custos quando pagos, **sempre** (BRL + ${meta.currency_code}).
+   - Indique custos quando pagos, **sempre** (BRL + ${meta.currency_code}).
 
 6. **Orçamento Resumido**  
    - **Tabela 1 — Custos por dia (faixas)**: colunas para **Hospedagem**, **Alimentação**, **Transporte**, **Atrações**, **Subtotal/Dia** — todos em **BRL** e, na mesma célula, o valor convertido em ${meta.currency_code} entre parênteses.  
@@ -339,6 +355,33 @@ Observações:
     };
 
     /* ---------- 5) Envio por e-mail (opcional) ---------- */
+    // Monta uma tabela-resumo elegante para o e-mail
+    const emailResumoTabela = (() => {
+      const row = (k, v) => `
+        <tr>
+          <td style="padding:8px 10px;border:1px solid #eceff4;background:#f8fafc;color:#111;font-weight:600;width:40%">${escapeHtml(k)}</td>
+          <td style="padding:8px 10px;border:1px solid #eceff4;color:#111">${escapeHtml(v)}</td>
+        </tr>`;
+      const rows = [];
+      rows.push(row('Destino', destinoLabel));
+      rows.push(row('Dias', String(dias)));
+      rows.push(row('Pessoas', String(pessoas)));
+      rows.push(row('Perfil', perfil));
+      rows.push(row('Estilo', estilo));
+      rows.push(row('Moeda local', meta.currency_code || 'BRL'));
+      if (fx.brl_to_quote) {
+        rows.push(row('Taxa usada', `1 BRL = ${fx.brl_to_quote.toFixed(4)} ${meta.currency_code}  (1 ${meta.currency_code} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)}) — ${fx.date}`));
+      } else {
+        rows.push(row('Taxa usada', 'Moeda local: BRL (sem conversão)'));
+      }
+      if (orcTotal && orcTotal > 0) rows.push(row('Orçamento total', fmtMoneyBRL(orcTotal)));
+      if (orcPerPerson && orcPerPerson > 0) rows.push(row('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson)));
+      return `
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #eaeaea;border-radius:8px;overflow:hidden">
+          ${rows.join('')}
+        </table>`;
+    })();
+
     if (emailDestino && SENDGRID_API_KEY && MAIL_FROM) {
       const assunto = `Roteiro • ${destinoLabel} • ${BRAND_NAME}`;
       const html = `
@@ -351,13 +394,10 @@ Observações:
       </td>
     </tr>
     <tr><td style="padding:18px 20px">
+      <h2 style="margin:0 0 10px 0;font-size:18px;color:#111">Resumo do planejamento</h2>
+      ${emailResumoTabela}
+      <div style="height:14px"></div>
       <h2 style="margin:0 0 6px 0;font-size:18px;color:#111">Roteiro: ${escapeHtml(destinoLabel)}</h2>
-      <div style="color:#475467;font-size:13px;margin-bottom:6px">
-        Dias: <strong>${dias}</strong> • Pessoas: <strong>${pessoas}</strong> • Perfil: <strong>${escapeHtml(perfil)}</strong> • Estilo: <strong>${escapeHtml(estilo)}</strong>
-      </div>
-      <div style="color:#475467;font-size:12px;margin-bottom:12px">
-        ${escapeHtml(convHeader)}
-      </div>
       <div style="white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:14px;line-height:1.55;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:12px">
 ${escapeHtml(texto)}
       </div>
