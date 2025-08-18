@@ -282,14 +282,14 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
 <section>
   <h2>2. Atrações Imperdíveis</h2>
   <ul>
-    <!-- 8–15 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Coloque <small>Fonte: <a href="...">domínio</a></small>. -->
+    <!-- 10–18 itens: nome, bairro/zona, breve descrição, tempo médio, melhor horário; faixa de preço (BRL + ${meta.currency_code}). Coloque <small>Fonte: <a href="...">domínio</a></small>. -->
   </ul>
 </section>
 
 <section>
   <h2>3. Onde comer & beber</h2>
   <ul>
-    <!-- 6–12 lugares com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
+    <!-- 8–14 lugares com estilo/cozinha, bairro/zona, ticket médio (BRL + ${meta.currency_code}) e <small>Fonte...</small>. -->
   </ul>
 </section>
 
@@ -309,7 +309,14 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
 
 <section>
   <h2>6. Roteiro Dia a Dia</h2>
-  <!-- Para D1..D${dias}, gerar <h3>Dia X</h3> com 2–4 atividades (manhã/tarde/noite). Cite custos quando pagos (BRL + ${meta.currency_code}) e 1–2 links úteis/dia em <small>Fonte...</small>. -->
+  <!-- Para D1..D${dias}, gere <h3>Dia X</h3> seguido de UMA LISTA com **no mínimo 5** e preferencialmente **6–7** atividades bem distribuídas ao longo do dia, cobrindo ~12h úteis.
+       Para cada atividade, mostre:
+       • faixa de horário aproximada (ex.: 08:30–10:00, 10:15–12:00, 12:00–13:30 almoço, 14:00–16:00, 16:15–18:00, 19:30–21:30);
+       • nome do lugar/experiência + bairro/zona;
+       • por que vale a pena / dica prática;
+       • preço quando pago (BRL + ${meta.currency_code});
+       • <small>Fonte: <a href="...">domínio</a></small>.
+       Evite limitar-se a "manhã/tarde/noite": distribua em blocos (manhã cedo, manhã, almoço, início da tarde, fim da tarde, noite, extra opcional). -->
 </section>
 
 <section>
