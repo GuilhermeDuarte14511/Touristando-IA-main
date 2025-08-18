@@ -28,7 +28,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 20000) {
   }
 }
 
-// parse robusto de JSON
+// parse robusto de JSON/texto
 async function safeJson(res) {
   const txt = await res.text();
   try { return JSON.parse(txt); } catch { return { _raw: txt }; }
@@ -39,12 +39,9 @@ function fmtDate(d = new Date()) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
 }
 
-// arredondar bonito para moeda
+// moeda BRL
 function fmtMoneyBRL(v) {
   return new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL', maximumFractionDigits:0 }).format(v);
-}
-function fmtMoneyGeneric(v, code) {
-  return new Intl.NumberFormat('pt-BR', { style:'currency', currency:code }).format(v);
 }
 
 /* ----------------------- handler ----------------------- */
@@ -91,9 +88,28 @@ export default async function handler(req, res) {
       body.cidade?.toString().trim();
 
     const dias = Number(body.dias ?? 5);
-    const orcamento = (body.orcamento !== undefined && body.orcamento !== null && body.orcamento !== '') ? Number(body.orcamento) : null;
+    const pessoas = Math.max(1, Number(body.pessoas ?? 1));
     const perfil = (body.perfil || 'normal').toString();
+    const estilo = (body.estilo || 'casual').toString(); // casual | aventura | romântica
     const emailDestino = (body.emailDestino || '').toString().trim() || null;
+
+    // orçamentos
+    const orcamento =
+      (body.orcamento !== undefined && body.orcamento !== null && body.orcamento !== '')
+        ? Number(body.orcamento) : null;
+
+    const orcamentoPorPessoa =
+      (body.orcamento_por_pessoa !== undefined && body.orcamento_por_pessoa !== null && body.orcamento_por_pessoa !== '')
+        ? Number(body.orcamento_por_pessoa) : null;
+
+    // Deriva total ou por pessoa se faltarem
+    const orcTotal = (orcamento && orcamento > 0)
+      ? orcamento
+      : (orcamentoPorPessoa && pessoas > 0 ? orcamentoPorPessoa * pessoas : null);
+
+    const orcPerPerson = (orcamentoPorPessoa && orcamentoPorPessoa > 0)
+      ? orcamentoPorPessoa
+      : (orcTotal && pessoas > 0 ? orcTotal / pessoas : null);
 
     if (!destinoEntrada) {
       return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").' });
@@ -115,8 +131,7 @@ Dado um destino (país, estado, região ou cidade), retorne:
   "country_code": string,                  // ISO-3166-1 alfa-2, se souber (ex.: "US","BR","PT")
   "currency_code": string,                 // ISO 4217 principal usada lá (ex.: "USD","EUR","BRL")
   "currency_name": string                  // Nome da moeda
-}`
-      },
+}` },
       { role: 'user', content: `Destino: ${destinoEntrada}` }
     ];
 
@@ -174,7 +189,6 @@ Dado um destino (país, estado, região ou cidade), retorne:
     };
 
     try {
-      // Se moeda local for BRL, taxa é 1:1
       if ((meta.currency_code || 'BRL').toUpperCase() === 'BRL') {
         fx.brl_to_quote = 1;
         fx.quote_to_brl = 1;
@@ -193,13 +207,17 @@ Dado um destino (país, estado, região ou cidade), retorne:
       // Em caso de falha, mantém 0 (modelo irá usar somente BRL)
     }
 
-    // Texto de faixa/brief de orçamento
-    const faixa = (orcamento && orcamento > 0)
-      ? `Orçamento total informado: ${fmtMoneyBRL(orcamento)}.`
-      : 'Sem orçamento declarado; use faixas típicas do destino.';
+    // Brief de orçamento
+    const faixa = (() => {
+      const partes = [];
+      partes.push(`Grupo: ${pessoas} pessoa(s).`);
+      if (orcTotal && orcTotal > 0) partes.push(`Orçamento total: ${fmtMoneyBRL(orcTotal)}.`);
+      if (orcPerPerson && orcPerPerson > 0) partes.push(`≈ ${fmtMoneyBRL(orcPerPerson)} por pessoa.`);
+      if (!partes.length) partes.push('Sem orçamento declarado; use faixas típicas do destino.');
+      return partes.join(' ');
+    })();
 
     /* ---------- 3) Prompt principal (atrações, hotéis, transportes, custos) ---------- */
-    // Diretrizes de conversão
     const convHeader = (fx.quote !== 'BRL' && fx.brl_to_quote)
       ? `Taxa usada (exchangerate.host, ${fx.date}): 1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ ${fmtMoneyBRL(fx.quote_to_brl)})`
       : `Moeda local: BRL. Mostre os valores apenas em R$.`;
@@ -209,19 +227,27 @@ Dado um destino (país, estado, região ou cidade), retorne:
         ? `${meta.normalized_name}, ${meta.country_name}`
         : (meta.normalized_name || destinoEntrada);
 
-    // Instruções ricas para o modelo
+    const estiloBrief = ({
+      casual: 'Misture clássicos turísticos com tempo livre e opções flexíveis.',
+      aventura: 'Priorize trilhas, natureza, esportes e experiências ao ar livre; inclua avisos de segurança.',
+      'romântica': 'Foque passeios cênicos, restaurantes charmosos e experiências a dois.'
+    })[estilo] || 'Misture clássicos turísticos com tempo livre e opções flexíveis.';
+
     const mainPrompt =
-`Gere um roteiro detalhado **em PT-BR** para **${destinoLabel}**, considerando **${dias} dia(s)** e perfil **${perfil}**.
+`Gere um roteiro detalhado **em PT-BR** para **${destinoLabel}**, considerando **${dias} dia(s)**, **${pessoas} pessoa(s)**, perfil **${perfil}** e estilo **${estilo}**.
 ${faixa}
 
 Requisitos obrigatórios:
-- **Estrita estrutura em Markdown** com as seções abaixo.
-- **Sempre** mostre valores **em R$** e **na moeda local (${meta.currency_code})** usando **apenas** a taxa abaixo (não inventar outra):
+- **Estrutura em Markdown** nas seções abaixo, com títulos numerados.
+- **Sempre** mostre valores **em R$** e **na moeda local (${meta.currency_code})** usando **somente** a taxa abaixo (não invente outra):
   ${convHeader}
   - Se a moeda local for BRL, use somente R$.
-  - Formate como: \`R$ 120 (~USD 21.60)\` ou \`R$ 120\` se BRL.
-  - Para converter: \`BRL -> ${meta.currency_code}\` = valor_BR * ${fx.brl_to_quote || 0}, \`${meta.currency_code} -> BRL\` = valor_LOC * ${fx.quote_to_brl || 0}.
-- Não invente preços exatos de voos; use **faixas típicas** e deixe claro que são estimativas.
+  - Formate como: \`R$ 120 (~${meta.currency_code} 21.60)\` ou apenas \`R$ 120\` se BRL.
+  - Converta usando: \`BRL -> ${meta.currency_code}\` = valor_BR * ${fx.brl_to_quote || 0}, \`${meta.currency_code} -> BRL\` = valor_LOC * ${fx.quote_to_brl || 0}.
+- Não invente preços exatos de voos ou hotéis específicos; use **faixas típicas** e deixe claro que são estimativas.
+
+Personalização:
+- ${estiloBrief}
 
 Seções (nesta ordem):
 1. **Visão Geral**  
@@ -229,32 +255,39 @@ Seções (nesta ordem):
    - Melhor época e clima; segurança e deslocamento entre bairros/cidades.  
 
 2. **Atrações Imperdíveis**  
-   - Liste **de 8 a 15** atrações com breve descrição e **faixa de preço** (se paga) **nos dois formatos de moeda**.
+   - Liste **8–15** atrações com breve descrição e **faixa de preço** (se paga) **nos dois formatos de moeda**.
 
 3. **Hospedagem Recomendada (6–10)**  
-   - Liste hotéis/pousadas com **bairro/zona**, **categoria (econômico/médio/superior)** e **diária média** em ambos os formatos de moeda.  
-   - Se não tiver certeza de nomes específicos, priorize **bairros e cadeias comuns** com **faixas** realistas. Não invente telefones ou links.
+   - Liste hotéis/pousadas ou **bairros recomendados** com **categoria** (econômico/médio/superior) e **diária média** (BRL + ${meta.currency_code}).  
+   - Se não tiver certeza de nomes, use **bairros/zonas e cadeias comuns**. **Não crie links** nem telefones.
 
 4. **Transporte Local**  
-   - Opções (metrô/ônibus/app/táxi/passe/trem interurbano), **faixas de preço** por trecho/diária em BRL e ${meta.currency_code}.  
+   - Opções (metrô/ônibus/app/táxi/passe/trem interurbano), **faixas de preço** por trecho/diária (BRL + ${meta.currency_code}).  
    - Inclua trechos típicos (aeroporto→centro, centro→bairros turísticos) quando fizer sentido.
 
 5. **Roteiro Dia a Dia (D1..D${dias})**  
-   - 2–4 atividades/sugestões por dia (manhã/tarde/noite), com pequenas observações de custo (se pago) **nos dois formatos**.
+   - Para cada dia, sugira 2–4 atividades (manhã/tarde/noite).  
+   - Informe custos quando pagos, **sempre** (BRL + ${meta.currency_code}).
 
 6. **Orçamento Resumido**  
-   - Tabela com **faixas por dia** para: **hospedagem**, **alimentação**, **transporte**, **atrações**.  
-   - Inclua **subtotal/dia** e **total do período** em BRL e ${meta.currency_code}, usando a taxa informada.
+   - **Tabela 1 — Custos por dia (faixas)**: colunas para **Hospedagem**, **Alimentação**, **Transporte**, **Atrações**, **Subtotal/Dia** — todos em **BRL** e, na mesma célula, o valor convertido em ${meta.currency_code} entre parênteses.  
+   - **Tabela 2 — Quadro-resumo do grupo** (usando ${pessoas} pessoa(s) e ${dias} dia(s)):  
+     | Métrica | Valor |  
+     |---|---|  
+     | **Total do período (grupo)** | em R$ e ${meta.currency_code} |  
+     | **Total por pessoa** | em R$ e ${meta.currency_code} |  
+     | **Por dia (grupo)** | em R$ e ${meta.currency_code} |  
+     | **Por pessoa/dia** | em R$ e ${meta.currency_code} |  
+   - Se um orçamento foi informado (${orcTotal ? fmtMoneyBRL(orcTotal) : 'não informado'} total / ${orcPerPerson ? fmtMoneyBRL(orcPerPerson) : 'não informado'} p/pessoa), **use-o para ancorar as faixas**.
 
 7. **Dicas Rápidas**  
-   - Etiqueta local, chips/eSIM, gorjetas, tomada/voltagem, apps úteis, bairros para evitar à noite (se aplicável).
+   - Etiqueta local, chips/eSIM, gorjetas, tomada/voltagem, apps úteis, bairros a evitar (se aplicável).
 
 Observações:
-- Seja **prático**, **objetivo** e evite floreios.
-- Quando a informação for muito variável, **use faixas** (mín–méd–máx) e deixe explícito que são estimativas.
-- Não crie links nem números de contato.`;
+- Seja **prático** e **objetivo**.  
+- Quando a informação for muito variável, **use faixas (mín–méd–máx)** e sinalize como estimativa.  
+- **Não crie links** nem telefones.`;
 
-    // Montar mensagens para OpenAI
     const messages = [
       { role: 'system', content: 'Você é um travel planner sênior. Sempre responda em PT-BR com Markdown limpo e objetivo.' },
       { role: 'user', content: mainPrompt }
@@ -291,6 +324,12 @@ Observações:
         country: meta.country_name || null,
         currency_code: meta.currency_code,
         currency_name: meta.currency_name || null,
+        pessoas,
+        dias,
+        orcamento: orcTotal,
+        orcamento_por_pessoa: orcPerPerson,
+        estilo,
+        perfil,
         fx: {
           brl_to_local: fx.brl_to_quote,
           local_to_brl: fx.quote_to_brl,
@@ -313,8 +352,8 @@ Observações:
     </tr>
     <tr><td style="padding:18px 20px">
       <h2 style="margin:0 0 6px 0;font-size:18px;color:#111">Roteiro: ${escapeHtml(destinoLabel)}</h2>
-      <div style="color:#475467;font-size:13px;margin-bottom:8px">
-        Dias: <strong>${dias}</strong> • Perfil: <strong>${escapeHtml(perfil)}</strong>
+      <div style="color:#475467;font-size:13px;margin-bottom:6px">
+        Dias: <strong>${dias}</strong> • Pessoas: <strong>${pessoas}</strong> • Perfil: <strong>${escapeHtml(perfil)}</strong> • Estilo: <strong>${escapeHtml(estilo)}</strong>
       </div>
       <div style="color:#475467;font-size:12px;margin-bottom:12px">
         ${escapeHtml(convHeader)}

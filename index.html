@@ -35,6 +35,11 @@
       background-attachment: fixed;
     }
 
+    .form-control:disabled{
+      background-color: #0e1326 !important;
+      opacity: 1 !important;
+    }
+
     /* ==== força todos os textos a ficarem brancos ==== */
     a, a:hover, a:focus { color:#fff; text-decoration: underline dotted; }
     .text-secondary, .text-muted, .text-body-secondary,
@@ -193,7 +198,7 @@
         <div class="card p-3 p-md-4">
           <div class="d-flex align-items-center justify-content-between mb-2">
             <div class="step-title"><i class="fa-solid fa-sliders me-2 text-primary"></i>Assistente de Roteiro</div>
-            <div class="tiny"><span id="stepNow">1</span>/<span id="stepTotal">6</span></div>
+            <div class="tiny"><span id="stepNow">1</span>/<span id="stepTotal">8</span></div>
           </div>
 
           <div class="stepper mb-3">
@@ -202,11 +207,13 @@
             <div class="step-dot" data-step="3">3</div><div class="step-line"></div>
             <div class="step-dot" data-step="4">4</div><div class="step-line"></div>
             <div class="step-dot" data-step="5">5</div><div class="step-line"></div>
-            <div class="step-dot" data-step="6">6</div>
+            <div class="step-dot" data-step="6">6</div><div class="step-line"></div>
+            <div class="step-dot" data-step="7">7</div><div class="step-line"></div>
+            <div class="step-dot" data-step="8">8</div>
           </div>
 
           <div class="progress fake mb-3" aria-hidden="true">
-            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:16%"></div>
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:12%"></div>
           </div>
 
           <form id="wizard" class="row g-3" autocomplete="off">
@@ -231,30 +238,66 @@
 
             <!-- STEP 3 -->
             <div class="step hidden" data-step="3">
-              <label class="form-label">Passo 3 — Orçamento total (BRL) <span class="tiny">(opcional)</span></label>
+              <label class="form-label">Passo 3 — Quantas pessoas?</label>
               <div class="input-group">
-                <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-coins"></i></span>
-                <input id="orcamento" type="number" class="form-control" placeholder="3500">
+                <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-user-group"></i></span>
+                <input id="pessoas" type="number" class="form-control" value="2" min="1">
               </div>
-              <div class="form-text tiny">Se deixar vazio, usamos faixas típicas do destino.</div>
+              <div class="form-text tiny">Usaremos isso para calcular valores por pessoa e totais.</div>
             </div>
 
             <!-- STEP 4 -->
             <div class="step hidden" data-step="4">
-              <label class="form-label">Passo 4 — Qual seu perfil?</label>
+              <label class="form-label">Passo 4 — Orçamento por pessoa (BRL) <span class="tiny">(opcional)</span></label>
               <div class="input-group">
-                <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-person-walking-luggage"></i></span>
-                <select id="perfil" class="form-select">
-                  <option value="econômico">Econômico</option>
-                  <option value="normal" selected>Normal</option>
-                  <option value="conforto">Conforto</option>
-                </select>
+                <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-wallet"></i></span>
+                <input id="orcamentoPessoa" type="number" class="form-control" placeholder="1500">
               </div>
+              <div class="form-text tiny">Se preencher aqui e o total estiver vazio, calculamos o total automaticamente.</div>
             </div>
 
             <!-- STEP 5 -->
             <div class="step hidden" data-step="5">
-              <label class="form-label">Passo 5 — Enviar por e-mail <span class="tiny">(opcional)</span></label>
+              <label class="form-label">Passo 5 — Orçamento total do grupo (BRL) <span class="tiny">(opcional)</span></label>
+              <div class="input-group">
+                <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-coins"></i></span>
+                <input id="orcamento" type="number" class="form-control" placeholder="3500">
+              </div>
+              <div class="form-text tiny">Pode deixar vazio. Se informar o total, estimaremos o valor por pessoa.</div>
+            </div>
+
+            <!-- STEP 6 -->
+            <div class="step hidden" data-step="6">
+              <label class="form-label">Passo 6 — Preferências</label>
+              <div class="row g-2">
+                <div class="col-12">
+                  <div class="input-group">
+                    <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-person-walking-luggage"></i></span>
+                    <select id="perfil" class="form-select">
+                      <option value="econômico">Econômico</option>
+                      <option value="normal" selected>Normal</option>
+                      <option value="conforto">Conforto</option>
+                    </select>
+                  </div>
+                  <div class="form-text tiny">Nível de gasto desejado.</div>
+                </div>
+                <div class="col-12">
+                  <div class="input-group">
+                    <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-heart"></i></span>
+                    <select id="estilo" class="form-select">
+                      <option value="casual" selected>Viagem casual</option>
+                      <option value="aventura">Com aventuras</option>
+                      <option value="romântica">Romântica</option>
+                    </select>
+                  </div>
+                  <div class="form-text tiny">Usamos isso para ajustar atrações e sugestões.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- STEP 7 -->
+            <div class="step hidden" data-step="7">
+              <label class="form-label">Passo 7 — Enviar por e-mail <span class="tiny">(opcional)</span></label>
               <div class="input-group">
                 <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-envelope"></i></span>
                 <input id="email" type="email" class="form-control" placeholder="voce@exemplo.com">
@@ -262,9 +305,9 @@
               <div class="form-text tiny">Se o backend (SendGrid) estiver ativo, mandamos o roteiro em HTML.</div>
             </div>
 
-            <!-- STEP 6 -->
-            <div class="step hidden" data-step="6">
-              <label class="form-label">Passo 6 — Revisão &amp; Gerar</label>
+            <!-- STEP 8 -->
+            <div class="step hidden" data-step="8">
+              <label class="form-label">Passo 8 — Revisão &amp; Gerar</label>
               <div class="d-flex flex-wrap gap-2 mb-2" id="reviewTags"></div>
               <div class="tiny">Conferiu tudo? Clique em <b>Gerar roteiro</b> ou pressione <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</div>
             </div>
@@ -388,7 +431,14 @@
     const $metaChips = $('#metaChips');
     const toast = new bootstrap.Toast(document.getElementById('toast'), { delay: 2000 });
 
-    const $destino = $('#destino'), $dias = $('#dias'), $orc = $('#orcamento'), $perfil = $('#perfil'), $email = $('#email');
+    const $destino = $('#destino'),
+          $dias = $('#dias'),
+          $pessoas = $('#pessoas'),
+          $orcPessoa = $('#orcamentoPessoa'),
+          $orc = $('#orcamento'),
+          $perfil = $('#perfil'),
+          $estilo = $('#estilo'),
+          $email = $('#email');
 
     // ========= state =========
     let current = 1, isLoading = false, lastMd = '', lastHtml = '';
@@ -402,11 +452,45 @@
       $liveTags.empty();
       if ($destino.val().trim()) $liveTags.append(mkTag('fa-solid fa-location-dot', $destino.val().trim()));
       const d = +($dias.val() || 0); if (d>0) $liveTags.append(mkTag('fa-regular fa-calendar', `${d} dia(s)`));
-      const o = +($orc.val() || 0);  if (o>0) $liveTags.append(mkTag('fa-solid fa-coins', `R$ ${o.toLocaleString('pt-BR')}`));
-      if ($perfil.val())             $liveTags.append(mkTag('fa-solid fa-user', $perfil.val()));
-      if ($email.val().trim())       $liveTags.append(mkTag('fa-regular fa-envelope', $email.val().trim()));
+      const p = +($pessoas.val() || 0); if (p>0) $liveTags.append(mkTag('fa-solid fa-user-group', `${p} pessoa(s)`));
+      const op = +($orcPessoa.val() || 0); if (op>0) $liveTags.append(mkTag('fa-solid fa-wallet', `R$ ${op.toLocaleString('pt-BR')} p/pessoa`));
+      const o = +($orc.val() || 0);  if (o>0) $liveTags.append(mkTag('fa-solid fa-coins', `Total: R$ ${o.toLocaleString('pt-BR')}`));
+      if ($perfil.val()) $liveTags.append(mkTag('fa-solid fa-user', `Perfil: ${$perfil.val()}`));
+      if ($estilo.val()) $liveTags.append(mkTag('fa-solid fa-heart', `Estilo: ${$estilo.val()}`));
+      if ($email.val().trim()) $liveTags.append(mkTag('fa-regular fa-envelope', $email.val().trim()));
     }
-    [$destino,$dias,$orc,$perfil,$email].forEach($el => $el.on('input change', ()=>{updateSummary(); persistState();}));
+
+    function syncBudgets(){
+      const p  = parseInt($pessoas.val() || 0, 10);
+      const pp = parseFloat($orcPessoa.val() || 0);   // orçamento por pessoa
+      const tt = parseFloat($orc.val() || 0);         // total
+
+      // Se houver pessoas + valor por pessoa -> calcula TOTAL automaticamente
+      if (p > 0 && pp > 0) {
+        const calc = Math.round(p * pp);
+        $orc.val(calc)
+            .prop('disabled', true)                   // trava o campo total (evita conflito)
+            .attr('title', 'Calculado automaticamente: pessoas × valor por pessoa');
+        $('#orcAutoHint').removeClass('d-none');
+      } else {
+        // Libera o campo total quando não há valor por pessoa
+        $orc.prop('disabled', false).removeAttr('title');
+        $('#orcAutoHint').addClass('d-none');
+
+        // Se o TOTAL existir e valor/pessoa estiver vazio -> calcula valor/pessoa
+        if (tt > 0 && p > 0 && (!pp || pp === 0)) {
+          $orcPessoa.val(Math.round(tt / p));
+        }
+      }
+
+      // mantém os resumos em sincronia
+      updateSummary();
+      buildReview();
+    }
+
+    [$destino,$dias,$pessoas,$orcPessoa,$orc,$perfil,$estilo,$email].forEach($el =>
+      $el.on('input change', ()=>{ syncBudgets(); updateSummary(); persistState(); })
+    );
     updateSummary();
 
     function setAlert(msg){
@@ -427,7 +511,7 @@
         $(this).toggleClass('active', i<=n);
       });
       // progress %
-      const pct = Math.max(16, Math.round((n-1)/(totalSteps-1)*100));
+      const pct = Math.max(12, Math.round((n-1)/(totalSteps-1)*100));
       $progressBar.css('width', pct+'%');
       // buttons
       $btnBack.prop('disabled', n===1 || isLoading);
@@ -444,11 +528,16 @@
 
     function buildReview(){
       $reviewTags.empty();
-      if(current!==6) return;
+      if(current!==totalSteps) return;
       if ($destino.val().trim()) $reviewTags.append(mkTag('fa-solid fa-location-dot', $destino.val().trim()));
       const d = +($dias.val() || 0); if (d>0) $reviewTags.append(mkTag('fa-regular fa-calendar', `${d} dia(s)`));
-      const o = +($orc.val() || 0);  $reviewTags.append(mkTag('fa-solid fa-coins', o>0 ? `R$ ${o.toLocaleString('pt-BR')}` : 'Sem orçamento declarado'));
-      if ($perfil.val())             $reviewTags.append(mkTag('fa-solid fa-user', $perfil.val()));
+      const p = +($pessoas.val() || 0); if (p>0) $reviewTags.append(mkTag('fa-solid fa-user-group', `${p} pessoa(s)`));
+      const op = +($orcPessoa.val() || 0);
+      $reviewTags.append(mkTag('fa-solid fa-wallet', op>0 ? `R$ ${op.toLocaleString('pt-BR')} p/pessoa` : 'Sem valor/pessoa'));
+      const o = +($orc.val() || 0);
+      $reviewTags.append(mkTag('fa-solid fa-coins', o>0 ? `Total: R$ ${o.toLocaleString('pt-BR')}` : 'Sem total'));
+      if ($perfil.val()) $reviewTags.append(mkTag('fa-solid fa-user', `Perfil: ${$perfil.val()}`));
+      if ($estilo.val()) $reviewTags.append(mkTag('fa-solid fa-heart', `Estilo: ${$estilo.val()}`));
       $reviewTags.append(mkTag('fa-regular fa-envelope', $email.val().trim() || 'Não enviar por e-mail'));
     }
 
@@ -459,10 +548,18 @@
         if(!Number.isFinite(d) || d<=0){ setAlert('Informe um número de dias válido.'); return false; }
       }
       if(n===3){
-        const v = $orc.val();
-        if(v && +v<0){ setAlert('Orçamento não pode ser negativo.'); return false; }
+        const p = +($pessoas.val()||0);
+        if(!Number.isFinite(p) || p<=0){ setAlert('Informe a quantidade de pessoas.'); return false; }
+      }
+      if(n===4){
+        const v = $orcPessoa.val();
+        if(v && +v<0){ setAlert('Orçamento por pessoa não pode ser negativo.'); return false; }
       }
       if(n===5){
+        const v = $orc.val();
+        if(v && +v<0){ setAlert('Orçamento total não pode ser negativo.'); return false; }
+      }
+      if(n===7){
         const e = $email.val().trim();
         if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; }
       }
@@ -477,7 +574,7 @@
 
     // atalhos
     document.addEventListener('keydown', (e)=>{
-      if(e.ctrlKey && e.key === 'Enter' && current===6){ e.preventDefault(); generate(); }
+      if(e.ctrlKey && e.key === 'Enter' && current===totalSteps){ e.preventDefault(); generate(); }
       if(e.key === 'Escape'){ prevStep(); }
     });
 
@@ -525,13 +622,20 @@
     }
     function stopFakeProgress(){
       clearInterval(progTimer); progTimer=null; $('.progress-bar').css('width','100%');
-      setTimeout(()=> $('.progress-bar').css('width', `${Math.max(16, Math.round((current-1)/(totalSteps-1)*100))}%`), 500);
+      setTimeout(()=> $('.progress-bar').css('width', `${Math.max(12, Math.round((current-1)/(totalSteps-1)*100))}%`), 500);
     }
 
     // ====== persistência local ======
     function persistState(){
       const st = {
-        destino:$destino.val(), dias:$dias.val(), orc:$orc.val(), perfil:$perfil.val(), email:$email.val()
+        destino:$destino.val(),
+        dias:$dias.val(),
+        pessoas:$pessoas.val(),
+        orcPessoa:$orcPessoa.val(),
+        orc:$orc.val(),
+        perfil:$perfil.val(),
+        estilo:$estilo.val(),
+        email:$email.val()
       };
       localStorage.setItem('touristando_state', JSON.stringify(st));
     }
@@ -540,21 +644,28 @@
         const st = JSON.parse(localStorage.getItem('touristando_state')||'{}');
         if(st.destino) $destino.val(st.destino);
         if(st.dias)    $dias.val(st.dias);
+        if(st.pessoas) $pessoas.val(st.pessoas);
+        if(st.orcPessoa) $orcPessoa.val(st.orcPessoa);
         if(st.orc)     $orc.val(st.orc);
         if(st.perfil)  $perfil.val(st.perfil);
+        if(st.estilo)  $estilo.val(st.estilo);
         if(st.email)   $email.val(st.email);
+        syncBudgets();
         updateSummary();
       }catch{}
     })();
 
     // ====== generate ======
     async function generate(){
-      if(!validateStep(6) || isLoading) return;
+      if(!validateStep(totalSteps) || isLoading) return;
       const payload = {
         destino: $destino.val().trim(),
         dias: Number($dias.val() || 5),
+        pessoas: Number($pessoas.val() || 1),
+        orcamento_por_pessoa: $('#orcamentoPessoa').val() ? Number($('#orcamentoPessoa').val()) : null,
         orcamento: $('#orcamento').val() ? Number($('#orcamento').val()) : null,
         perfil: $perfil.val(),
+        estilo: $estilo.val(),
         emailDestino: $email.val().trim() || null
       };
       setLoading(true);
@@ -569,10 +680,12 @@
         const data = await resp.json();
         if(!resp.ok) throw new Error(data?.error || 'Falha ao gerar roteiro');
 
-        // Meta chips (moeda, taxa, destino)
+        // Meta chips (moeda, taxa, destino, pessoas, estilo)
         $metaChips.empty();
         if(data.meta){
           if(data.meta.destino) $metaChips.append(mkChip('fa-solid fa-map-pin', data.meta.destino));
+          if(data.meta.pessoas) $metaChips.append(mkChip('fa-solid fa-user-group', `${data.meta.pessoas} pessoa(s)`));
+          if(data.meta.estilo)  $metaChips.append(mkChip('fa-solid fa-heart', `Estilo: ${data.meta.estilo}`));
           if(data.meta.currency_code) $metaChips.append(mkChip('fa-solid fa-money-bill', `Moeda: ${data.meta.currency_code}`));
           if(data.meta.fx && data.meta.fx.brl_to_local){
             const val = Number(data.meta.fx.brl_to_local).toFixed(4);
@@ -581,12 +694,17 @@
           if(data.meta.fx && data.meta.fx.date){
             $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${data.meta.fx.date}`));
           }
+          if(data.meta.orcamento_por_pessoa){
+            $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(data.meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`));
+          }
+          if(data.meta.orcamento){
+            $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(data.meta.orcamento).toLocaleString('pt-BR')}`));
+          }
         }
 
         // Render Markdown (sanitizado) + guardamos versão MD
         lastMd = (data.texto || '').trim() || '(sem conteúdo)';
         marked.setOptions({ mangle:false, headerIds:false });
-        // links seguros abrindo em nova aba
         const renderer = new marked.Renderer();
         const _link = renderer.link;
         renderer.link = function(href,title,text){
@@ -596,10 +714,8 @@
         const unsafe = marked.parse(lastMd, { renderer });
         lastHtml = DOMPurify.sanitize(unsafe);
         $res.html(lastHtml);
-        // raw
         $resRaw.find('code').text(lastMd);
 
-        // confete :)
         confetti({ particleCount: 90, spread: 90, origin:{ y: 0.2 }});
 
         $('#toastText').text('Roteiro gerado!');
@@ -647,11 +763,11 @@
           <div>${lastHtml || $res.html() || ''}</div>
         </div>`;
       const opt = {
-        margin:       10,
-        filename:     `roteiro_${($destino.val()||'destino').toString().replace(/[^\w\-]+/g,'_')}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        margin: 10,
+        filename: `roteiro_${($destino.val()||'destino').toString().replace(/[^\w\-]+/g,'_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
       html2pdf().from(element).set(opt).save();
     });
