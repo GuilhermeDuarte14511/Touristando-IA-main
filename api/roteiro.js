@@ -113,105 +113,285 @@ function extractResponsesText(obj) {
   return obj?.choices?.[0]?.message?.content || '';
 }
 
-/* ----------------------- IATA helpers ----------------------- */
+/* ----------------------- IATA helpers (super robusto) ----------------------- */
 
-// normalizador: remove acentos, pontuação “leve” e múltiplos espaços
-const normalizeKey = (s='') =>
-  String(s)
+// Normalizador: remove acentos e pontuações leves
+function normalizeKey(s = '') {
+  return String(s)
     .toLowerCase()
-    .normalize('NFD').replace(/\p{Diacritic}/gu,'')
-    .replace(/[\(\)\[\]\{\}|·•–—\-_,.;:!?+@#%^*~'"`]/g,' ')
-    .replace(/\s+/g,' ')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // acentos
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')               // pontuação → espaço
+    .replace(/\s+/g, ' ')
     .trim();
-
-const IATA_HINTS = {
-  // BR capitais
-  'sao paulo': 'SAO', 'são paulo': 'SAO', 'sp': 'SAO', 'sampa': 'SAO',
-  'rio de janeiro': 'RIO', 'rio': 'RIO',
-  'belo horizonte': 'BHZ',
-  'brasilia': 'BSB', 'brasília': 'BSB',
-  'salvador': 'SSA', 'recife': 'REC', 'fortaleza': 'FOR',
-  'curitiba': 'CWB', 'florianopolis': 'FLN', 'florianópolis': 'FLN',
-  'porto alegre': 'POA', 'campinas': 'CPQ', 'viracopos': 'VCP',
-
-  // Europa/Américas agrupadores clássicos
-  'lisboa': 'LIS', 'porto': 'OPO', 'londres': 'LON', 'paris': 'PAR',
-  'roma': 'ROM', 'nova york': 'NYC', 'new york': 'NYC', 'miami': 'MIA',
-  'buenos aires': 'BUE', 'santiago': 'SCL', 'montevideo': 'MVD',
-
-  // Destinos turísticos brasileiros SEM aeroporto na cidade
-  'maragogi': 'MCZ', 'maragogi al': 'MCZ', 'maragogi brasil': 'MCZ', 'maragoji': 'MCZ',
-  'porto de galinhas': 'REC',
-  'morro de sao paulo': 'SSA', 'morro de são paulo': 'SSA', 'boipeba': 'SSA',
-  'arraial dajuda': 'BPS', 'arraial d ajuda': 'BPS', 'arraial d\'ajuda': 'BPS',
-  'barra grande bahia': 'IOS', 'peninsula de marau': 'IOS', 'peninsula de marau bahia': 'IOS',
-  'barreirinhas': 'SLZ', // lençóis maranhenses
-  'jalapao': 'PMW',
-  'chapada diamantina': 'SSA', 'lencois bahia': 'SSA', 'lençóis bahia': 'SSA',
-};
+}
 
 // aeroportos → código de CIDADE (agrupador) quando existir
 const AIRPORT_TO_CITY = {
+  // ===== BRASIL =====
   GRU:'SAO', CGH:'SAO', VCP:'SAO',
   GIG:'RIO', SDU:'RIO',
-  JFK:'NYC', EWR:'NYC', LGA:'NYC',
-  LHR:'LON', LGW:'LON', STN:'LON', LTN:'LON', LCY:'LON', SEN:'LON',
+  CNF:'BHZ', PLU:'BHZ',
+  BSB:'BSB',
+  SSA:'SSA',
+  REC:'REC',
+  FOR:'FOR',
+  NAT:'NAT', JPA:'JPA', MCZ:'MCZ', AJU:'AJU',
+  BEL:'BEL', MAO:'MAO', MCP:'MCP', BVB:'BVB',
+  PMW:'PMW', CGB:'CGB', CGR:'CGR', GYN:'GYN',
+  POA:'POA', CWB:'CWB', FLN:'FLN', NVT:'NVT', IGU:'IGU',
+  IOS:'IOS', BPS:'BPS', PHB:'PHB', STM:'STM', FEN:'FEN', SLZ:'SLZ', THE:'THE', VIX:'VIX', CXJ:'CXJ',
+
+  // ===== EUA =====
+  JFK:'NYC', LGA:'NYC', EWR:'NYC',
+  MCO:'ORL', SFB:'ORL', ORL:'ORL',
+  FLL:'MIA', MIA:'MIA', PBI:'MIA',
+  IAD:'WAS', DCA:'WAS', BWI:'WAS',
+  ORD:'CHI', MDW:'CHI',
+  LAX:'LAX', BUR:'LAX', LGB:'LAX', SNA:'LAX', ONT:'LAX',
+  SFO:'SFO', OAK:'SFO', SJC:'SFO',
+  SEA:'SEA', PDX:'PDX', SAN:'SAN', LAS:'LAS',
+  ATL:'ATL', DFW:'DFW', DAL:'DFW', IAH:'HOU', HOU:'HOU',
+  BOS:'BOS', HNL:'HNL',
+
+  // ===== CANADÁ =====
+  YYZ:'YTO', YTZ:'YTO', YHM:'YTO',
+  YUL:'YMQ', YHU:'YMQ',
+  YVR:'YVR', YQB:'YQB', YYC:'YYC', YEG:'YEG',
+
+  // ===== MÉXICO / CARIBE =====
+  MEX:'MEX', NLU:'MEX', TLC:'MEX',
+  CUN:'CUN', SJD:'SJD', PVR:'PVR', GDL:'GDL',
+  PUJ:'PUJ', SDQ:'SDQ', POP:'POP', STI:'STI',
+  HAV:'HAV',
+
+  // ===== EUROPA =====
+  // UK (LON)
+  LHR:'LON', LGW:'LON', LCY:'LON', LTN:'LON', STN:'LON', SEN:'LON',
+  // França (PAR)
   CDG:'PAR', ORY:'PAR', BVA:'PAR',
-  NRT:'TYO', HND:'TYO',
+  // Itália
+  FCO:'ROM', CIA:'ROM',
+  MXP:'MIL', LIN:'MIL', BGY:'MIL',
+  // Espanha
+  MAD:'MAD', BCN:'BCN', VLC:'VLC', SVQ:'SVQ', AGP:'AGP',
+  PMI:'PMI', IBZ:'IBZ', TFS:'TCI', TFN:'TCI', LPA:'LPA',
+  // Portugal
+  LIS:'LIS', OPO:'OPO', FAO:'FAO', FNC:'FNC', PDL:'PDL', TER:'TER',
+  // BeNeLux
+  AMS:'AMS', BRU:'BRU', CRL:'BRU',
+  // Alemanha
+  FRA:'FRA', MUC:'MUC', BER:'BER', TXL:'BER', SXF:'BER',
+  HAM:'HAM', DUS:'DUS', CGN:'CGN',
+  // Nórdicos
+  CPH:'CPH',
+  ARN:'STO', BMA:'STO', NYO:'STO', VST:'STO',
+  OSL:'OSL', HEL:'HEL',
+  // Centro/Leste
+  PRG:'PRG', BUD:'BUD', WAW:'WAW', KRK:'KRK', VIE:'VIE',
+  // Suíça
+  ZRH:'ZRH', GVA:'GVA', BSL:'BSL',
+  // Grécia
+  ATH:'ATH', JTR:'JTR', JMK:'JMK',
+  // Irlanda
+  DUB:'DUB', SNN:'SNN', ORK:'ORK',
+
+  // ===== ÁFRICA / ME =====
+  CMN:'CMN', RAK:'RAK', AGA:'AGA',
+  CAI:'CAI', HRG:'HRG', SSH:'SSH',
+  JNB:'JNB', CPT:'CPT', NBO:'NBO',
+  IST:'IST', SAW:'IST',
+  DXB:'DXB', DWC:'DXB', AUH:'AUH', DOH:'DOH', TLV:'TLV',
+
+  // ===== ÁSIA-PACÍFICO =====
+  // Japão
+  HND:'TYO', NRT:'TYO',
+  KIX:'OSA', ITM:'OSA', UKB:'OSA',
+  // Coreia
+  ICN:'SEL', GMP:'SEL',
+  // China
+  PEK:'BJS', PKX:'BJS',
+  PVG:'SHA', SHA:'SHA',
+  // HK / Macau / Shenzhen
+  HKG:'HKG', MFM:'MFM', SZX:'SZX',
+  // Sudeste Asiático
+  BKK:'BKK', DMK:'BKK',
+  HKT:'HKT', CNX:'CNX',
+  HAN:'HAN', SGN:'SGN',
+  KUL:'KUL', SIN:'SIN',
+  // Indonésia
+  CGK:'JKT', HLP:'JKT', DPS:'DPS',
+  // Filipinas
+  MNL:'MNL', CEB:'CEB',
+  // Índia
+  DEL:'DEL', BOM:'BOM', BLR:'BLR', MAA:'MAA', HYD:'HYD', GOI:'GOI',
+  // ANZ
+  SYD:'SYD', MEL:'MEL', BNE:'BNE', PER:'PER', ADL:'ADL',
+  AKL:'AKL', WLG:'WLG', CHC:'CHC', ZQN:'ZQN'
 };
 
+// aliases e destinos → código da cidade (ou aeroporto mais próximo)
+const IATA_HINTS = {
+  // ===================== BRASIL — CAPITAIS / GRANDES CENTROS =====================
+  'sao paulo':'SAO','sampa':'SAO','sp':'SAO',
+  'rio de janeiro':'RIO','rio':'RIO',
+  'brasilia':'BSB',
+  'belo horizonte':'BHZ',
+  'salvador':'SSA','recife':'REC','fortaleza':'FOR','maceio':'MCZ','natal':'NAT','joao pessoa':'JPA','aracaju':'AJU',
+  'vitoria':'VIX','belem':'BEL','manaus':'MAO','boa vista':'BVB','macapa':'MCP',
+  'palmas':'PMW','cuiaba':'CGB','campo grande':'CGR','goiania':'GYN',
+  'porto alegre':'POA','curitiba':'CWB','florianopolis':'FLN','campinas':'VCP','viracopos':'VCP','caxias do sul':'CXJ',
+  'foz do iguacu':'IGU','foz do iguaçu':'IGU',
+
+  // ===================== BRASIL — DESTINOS (sem aeroporto na cidade) =====================
+  'maragogi':'MCZ','maragoji':'MCZ','maragogi al':'MCZ','maragogi brasil':'MCZ',
+  'porto de galinhas':'REC',
+  'morro de sao paulo':'SSA','morro de são paulo':'SSA','boipeba':'SSA',
+  'chapada diamantina':'SSA','lencois bahia':'SSA','lençóis bahia':'SSA',
+  'barreirinhas':'SLZ','lencois maranhenses':'SLZ','lençóis maranhenses':'SLZ',
+  'jalapao':'PMW',
+  'gramado':'POA','canela':'POA','serra gaucha':'POA','bento goncalves':'POA','bento gonçalves':'POA',
+  'arraial do cabo':'RIO','buzios':'RIO','armacao dos buzios':'RIO','armação dos búzios':'RIO','angra dos reis':'RIO','ilha grande':'RIO','paraty':'RIO',
+  'balneario camboriu':'NVT','balneário camboriú':'NVT','bombinhas':'NVT','penha':'NVT','beto carreiro':'NVT','beto carrero':'NVT','beto carreiro world':'NVT',
+  'garopaba':'FLN','praia do rosa':'FLN','imbituba':'FLN',
+  'ilha do mel':'CWB','ilhabela':'SAO','ubatuba':'SAO','maresias':'SAO',
+  'itacare':'IOS','itacaré':'IOS','marau':'IOS','peninsula de marau':'IOS','península de maraú':'IOS','barra grande bahia':'IOS',
+  'trancoso':'BPS','caraiva':'BPS','caraíva':'BPS','arraial d ajuda':'BPS','arraial d\'ajuda':'BPS','arraial dajuda':'BPS',
+  'praia do forte':'SSA','pipa':'NAT','jericoacoara':'FOR','jijoca':'FOR',
+  'alter do chao':'STM','alter do chão':'STM',
+  'chapada dos veadeiros':'BSB','alto paraiso de goias':'BSB','alto paraíso de goiás':'BSB',
+  'chapada dos guimaraes':'CGB','chapada dos guimarães':'CGB',
+  'pantanal':'CGR','bonito ms':'CGR','fernando de noronha':'FEN',
+  'barra grande piaui':'PHB','barra grande pi':'PHB',
+
+  // ===================== AMÉRICAS =====================
+  // EUA hubs & cidades
+  'nova york':'NYC','new york':'NYC',
+  'orlando':'ORL','miami':'MIA','fort lauderdale':'MIA',
+  'boston':'BOS','chicago':'CHI','washington':'WAS','washington dc':'WAS','dc':'WAS',
+  'los angeles':'LAX','san francisco':'SFO','las vegas':'LAS',
+  'seattle':'SEA','san diego':'SAN','atlanta':'ATL','houston':'HOU','dallas':'DFW','honolulu':'HNL',
+  // México & vizinhos
+  'cidade do mexico':'MEX','cdmx':'MEX','mexico city':'MEX',
+  'cancun':'CUN','riviera maya':'CUN','playa del carmen':'CUN','tulum':'CUN',
+  'los cabos':'SJD','puerto vallarta':'PVR','guadalajara':'GDL',
+  // Canadá
+  'toronto':'YTO','montreal':'YMQ','vancouver':'YVR','quebec':'YQB',
+  // Andinos
+  'lima':'LIM','cusco':'CUZ','arequipa':'AQP','machu picchu':'CUZ',
+  'bogota':'BOG','medellin':'MDE','cartagena':'CTG','san andres':'ADZ','san andrés':'ADZ',
+  'quito':'UIO','guayaquil':'GYE',
+  'la paz bolivia':'LPB','santa cruz bolivia':'VVI','uyuni':'UYU',
+  'buenos aires':'BUE','bariloche':'BRC','mendoza':'MDZ','ushuaia':'USH','el calafate':'FTE',
+  'santiago':'SCL','montevideo':'MVD','punta del este':'PDP',
+  'havana':'HAV','punta cana':'PUJ','republica dominicana':'PUJ',
+
+  // ===================== EUROPA =====================
+  'lisboa':'LIS','porto':'OPO','faro':'FAO','funchal':'FNC','madeira':'FNC',
+  'madrid':'MAD','barcelona':'BCN','valencia':'VLC','sevilla':'SVQ','sevilha':'SVQ','malaga':'AGP','mallorca':'PMI','palma de mallorca':'PMI','ibiza':'IBZ','tenerife':'TCI','gran canaria':'LPA',
+  'londres':'LON','manchester':'MAN','edimburgo':'EDI','dublin':'DUB',
+  'paris':'PAR','lyon':'LYS','nice':'NCE','cote d azur':'NCE','côte d azur':'NCE',
+  'amsterdam':'AMS','bruxelas':'BRU',
+  'berlim':'BER','frankfurt':'FRA','munique':'MUC','munich':'MUC','hamburgo':'HAM','dusseldorf':'DUS','düsseldorf':'DUS','colonia':'CGN','colônia':'CGN',
+  'zurique':'ZRH','genebra':'GVA','basel':'BSL',
+  'viena':'VIE','praga':'PRG','budapeste':'BUD','varsovia':'WAW','varsóvia':'WAW','krakow':'KRK','cracovia':'KRK',
+  'copenhague':'CPH','estocolmo':'STO','oslo':'OSL','helsinki':'HEL',
+  'roma':'ROM','veneza':'VCE','milao':'MIL','milão':'MIL','florenca':'FLR','florença':'FLR','napoles':'NAP','nápoles':'NAP',
+  'atenas':'ATH','santorini':'JTR','mykonos':'JMK',
+
+  // ===================== ÁFRICA & ORIENTE MÉDIO =====================
+  'casablanca':'CMN','marrakesh':'RAK','marraquesh':'RAK','agadir':'AGA',
+  'cairo':'CAI','hurghada':'HRG','sharm el sheikh':'SSH',
+  'johanesburgo':'JNB','cidade do cabo':'CPT','cape town':'CPT','nairobi':'NBO',
+  'istambul':'IST','istanbul':'IST','dubai':'DXB','abu dhabi':'AUH','doha':'DOH','tel aviv':'TLV',
+
+  // ===================== ÁSIA-PACÍFICO =====================
+  'toquio':'TYO','tokyo':'TYO',
+  'osaka':'OSA','kyoto':'OSA','nara':'OSA',
+  'seul':'SEL',
+  'pequim':'BJS','beijing':'BJS',
+  'xangai':'SHA','shanghai':'SHA',
+  'hong kong':'HKG','macau':'MFM','shenzhen':'SZX',
+  'bangkok':'BKK','phuket':'HKT','chiang mai':'CNX',
+  'hanoi':'HAN','ho chi minh':'SGN',
+  'kuala lumpur':'KUL','singapura':'SIN',
+  'bali':'DPS','denpasar':'DPS','jacarta':'JKT',
+  'manila':'MNL','cebu':'CEB',
+  'delhi':'DEL','mumbai':'BOM','bangalore':'BLR','chennai':'MAA','hyderabad':'HYD','goa':'GOI',
+  'sydney':'SYD','melbourne':'MEL','brisbane':'BNE','perth':'PER','adelaide':'ADL',
+  'auckland':'AKL','queenstown':'ZQN','wellington':'WLG','christchurch':'CHC',
+
+  // ===================== PAÍSES → HUB PRINCIPAL =====================
+  'portugal':'LIS','espanha':'MAD','franca':'PAR','france':'PAR',
+  'italia':'ROM','italy':'ROM','alemanha':'BER','germany':'BER',
+  'reino unido':'LON','uk':'LON','united kingdom':'LON','irlanda':'DUB',
+  'holanda':'AMS','paises baixos':'AMS','netherlands':'AMS',
+  'suica':'ZRH','switzerland':'ZRH','austria':'VIE','hungria':'BUD','polonia':'WAW',
+  'dinamarca':'CPH','suecia':'STO','noruega':'OSL','grecia':'ATH','turquia':'IST',
+  'marrocos':'CMN','egito':'CAI','emirados arabes':'DXB','emirados':'DXB','uae':'DXB','qatar':'DOH','israel':'TLV',
+  'japao':'TYO','coreia do sul':'SEL','china':'BJS','singapura pais':'SIN','tailandia':'BKK','indonesia':'CGK',
+  'filipinas':'MNL','australia':'SYD','nova zelandia':'AKL',
+  'canada':'YTO','mexico pais':'MEX','estados unidos':'NYC','eua':'NYC','usa':'NYC',
+  'argentina':'BUE','chile':'SCL','uruguai':'MVD','peru':'LIM','colombia':'BOG','bolivia':'LPB','equador':'UIO',
+};
+
+// captura código IATA dentro do texto (ex.: "São Paulo, GRU")
+function looksLikeIata(s = '') {
+  const m = String(s).toUpperCase().match(/\b([A-Z]{3})\b/);
+  return m ? m[1] : null;
+}
+
+// prefere código de cidade/área metropolitana quando existir
 function preferCityCode(code='') {
   const up = String(code || '').toUpperCase();
   return AIRPORT_TO_CITY[up] || up;
 }
 
-function looksLikeIata(s='') {
-  const m = String(s).toUpperCase().match(/\b([A-Z]{3})\b/);
-  return m ? m[1] : null;
-}
-
+// resolve termo -> código IATA (preferindo código de cidade)
 async function resolveIataTerm(term) {
   if (!term) return null;
 
-  // 1) se veio um código explícito no texto, retorna
+  // 1) Se já veio um código embutido (ex.: "São Paulo, GRU"), colapsa para cidade se houver
   const direct = looksLikeIata(term);
-  if (direct) return direct;
+  if (direct) return preferCityCode(direct);
 
-  // 2) tenta HINTS com várias variações normalizadas
-  const candidates = [];
+  // 2) Aliases locais (com normalização e variações simples)
   const raw = String(term);
   const byComma = raw.split(',')[0];
-  candidates.push(raw);
-  candidates.push(byComma);
-  candidates.push(normalizeKey(raw));
-  candidates.push(normalizeKey(byComma));
-
-  // remove país/complementos comuns (brasil/portugal/etc.)
-  const cleaned = normalizeKey(byComma).replace(/\b(brasil|brazil|portugal|espanha|italia|italy|franca|france)\b/g,'').trim();
-  if (cleaned) candidates.push(cleaned);
+  const candidates = [
+    raw, byComma,
+    normalizeKey(raw), normalizeKey(byComma),
+    normalizeKey(byComma).replace(/\b(brasil|brazil|portugal|espanha|italia|italy|franca|france)\b/g,'').trim()
+  ].filter(Boolean);
 
   for (const c of candidates) {
     const k = normalizeKey(c);
     if (k && IATA_HINTS[k]) return IATA_HINTS[k];
   }
 
-  // 3) autocomplete externo (Travelpayouts)
+  // 3) Autocomplete (Travelpayouts) — colapsa para cidade quando houver
   try {
     const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(byComma)}&locale=pt&types[]=city&types[]=airport`;
     log('IATA autocomplete →', { term: byComma, url: url.replace(/term=[^&]+/, 'term=***') });
     const r = await fetchWithTimeout(url, {}, 12000);
     const data = await safeJson(r);
     log('IATA autocomplete status', r.status, 'hits:', Array.isArray(data) ? data.length : 0);
+
     if (Array.isArray(data) && data.length) {
       const city = data.find(x => x.type === 'city' && x.code);
-      if (city?.code) { log('IATA resolved (city)', term, '→', city.code); return String(city.code).toUpperCase(); }
+      if (city?.code) return String(city.code).toUpperCase();
+
       const ap = data.find(x => x.type === 'airport' && (x.city_code || x.code));
-      if (ap?.city_code) { log('IATA resolved (airport->city)', term, '→', ap.city_code); return String(ap.city_code).toUpperCase(); }
-      if (ap?.code) { log('IATA resolved (airport code)', term, '→', ap.code); return String(ap.code).toUpperCase(); }
+      if (ap?.city_code) return String(ap.city_code).toUpperCase();
+
+      if (ap?.code) {
+        const code = String(ap.code).toUpperCase();
+        return preferCityCode(code);
+      }
     }
   } catch (e) { log('IATA autocomplete erro', String(e)); }
 
-  log('IATA fallback/unknown for term', term);
+  // 4) Falhou
+  log('IATA fallback/unknown para', term);
   return null;
 }
 
