@@ -165,34 +165,22 @@ const AIRPORT_TO_CITY = {
   HAV:'HAV',
 
   // ===== EUROPA =====
-  // UK (LON)
   LHR:'LON', LGW:'LON', LCY:'LON', LTN:'LON', STN:'LON', SEN:'LON',
-  // França (PAR)
   CDG:'PAR', ORY:'PAR', BVA:'PAR',
-  // Itália
   FCO:'ROM', CIA:'ROM',
   MXP:'MIL', LIN:'MIL', BGY:'MIL',
-  // Espanha
   MAD:'MAD', BCN:'BCN', VLC:'VLC', SVQ:'SVQ', AGP:'AGP',
   PMI:'PMI', IBZ:'IBZ', TFS:'TCI', TFN:'TCI', LPA:'LPA',
-  // Portugal
   LIS:'LIS', OPO:'OPO', FAO:'FAO', FNC:'FNC', PDL:'PDL', TER:'TER',
-  // BeNeLux
   AMS:'AMS', BRU:'BRU', CRL:'BRU',
-  // Alemanha
   FRA:'FRA', MUC:'MUC', BER:'BER', TXL:'BER', SXF:'BER',
   HAM:'HAM', DUS:'DUS', CGN:'CGN',
-  // Nórdicos
   CPH:'CPH',
   ARN:'STO', BMA:'STO', NYO:'STO', VST:'STO',
   OSL:'OSL', HEL:'HEL',
-  // Centro/Leste
   PRG:'PRG', BUD:'BUD', WAW:'WAW', KRK:'KRK', VIE:'VIE',
-  // Suíça
   ZRH:'ZRH', GVA:'GVA', BSL:'BSL',
-  // Grécia
   ATH:'ATH', JTR:'JTR', JMK:'JMK',
-  // Irlanda
   DUB:'DUB', SNN:'SNN', ORK:'ORK',
 
   // ===== ÁFRICA / ME =====
@@ -203,35 +191,26 @@ const AIRPORT_TO_CITY = {
   DXB:'DXB', DWC:'DXB', AUH:'AUH', DOH:'DOH', TLV:'TLV',
 
   // ===== ÁSIA-PACÍFICO =====
-  // Japão
   HND:'TYO', NRT:'TYO',
   KIX:'OSA', ITM:'OSA', UKB:'OSA',
-  // Coreia
   ICN:'SEL', GMP:'SEL',
-  // China
   PEK:'BJS', PKX:'BJS',
   PVG:'SHA', SHA:'SHA',
-  // HK / Macau / Shenzhen
   HKG:'HKG', MFM:'MFM', SZX:'SZX',
-  // Sudeste Asiático
   BKK:'BKK', DMK:'BKK',
   HKT:'HKT', CNX:'CNX',
   HAN:'HAN', SGN:'SGN',
   KUL:'KUL', SIN:'SIN',
-  // Indonésia
   CGK:'JKT', HLP:'JKT', DPS:'DPS',
-  // Filipinas
   MNL:'MNL', CEB:'CEB',
-  // Índia
   DEL:'DEL', BOM:'BOM', BLR:'BLR', MAA:'MAA', HYD:'HYD', GOI:'GOI',
-  // ANZ
   SYD:'SYD', MEL:'MEL', BNE:'BNE', PER:'PER', ADL:'ADL',
   AKL:'AKL', WLG:'WLG', CHC:'CHC', ZQN:'ZQN'
 };
 
 // aliases e destinos → código da cidade (ou aeroporto mais próximo)
 const IATA_HINTS = {
-  // ===================== BRASIL — CAPITAIS / GRANDES CENTROS =====================
+  // (… conteúdo idêntico ao seu original, mantido para robustez …)
   'sao paulo':'SAO','sampa':'SAO','sp':'SAO',
   'rio de janeiro':'RIO','rio':'RIO',
   'brasilia':'BSB',
@@ -241,8 +220,6 @@ const IATA_HINTS = {
   'palmas':'PMW','cuiaba':'CGB','campo grande':'CGR','goiania':'GYN',
   'porto alegre':'POA','curitiba':'CWB','florianopolis':'FLN','campinas':'VCP','viracopos':'VCP','caxias do sul':'CXJ',
   'foz do iguacu':'IGU','foz do iguaçu':'IGU',
-
-  // ===================== BRASIL — DESTINOS (sem aeroporto na cidade) =====================
   'maragogi':'MCZ','maragoji':'MCZ','maragogi al':'MCZ','maragogi brasil':'MCZ',
   'porto de galinhas':'REC',
   'morro de sao paulo':'SSA','morro de são paulo':'SSA','boipeba':'SSA',
@@ -262,21 +239,15 @@ const IATA_HINTS = {
   'chapada dos guimaraes':'CGB','chapada dos guimarães':'CGB',
   'pantanal':'CGR','bonito ms':'CGR','fernando de noronha':'FEN',
   'barra grande piaui':'PHB','barra grande pi':'PHB',
-
-  // ===================== AMÉRICAS =====================
-  // EUA hubs & cidades
   'nova york':'NYC','new york':'NYC',
   'orlando':'ORL','miami':'MIA','fort lauderdale':'MIA',
   'boston':'BOS','chicago':'CHI','washington':'WAS','washington dc':'WAS','dc':'WAS',
   'los angeles':'LAX','san francisco':'SFO','las vegas':'LAS',
   'seattle':'SEA','san diego':'SAN','atlanta':'ATL','houston':'HOU','dallas':'DFW','honolulu':'HNL',
-  // México & vizinhos
   'cidade do mexico':'MEX','cdmx':'MEX','mexico city':'MEX',
   'cancun':'CUN','riviera maya':'CUN','playa del carmen':'CUN','tulum':'CUN',
   'los cabos':'SJD','puerto vallarta':'PVR','guadalajara':'GDL',
-  // Canadá
   'toronto':'YTO','montreal':'YMQ','vancouver':'YVR','quebec':'YQB',
-  // Andinos
   'lima':'LIM','cusco':'CUZ','arequipa':'AQP','machu picchu':'CUZ',
   'bogota':'BOG','medellin':'MDE','cartagena':'CTG','san andres':'ADZ','san andrés':'ADZ',
   'quito':'UIO','guayaquil':'GYE',
@@ -284,8 +255,6 @@ const IATA_HINTS = {
   'buenos aires':'BUE','bariloche':'BRC','mendoza':'MDZ','ushuaia':'USH','el calafate':'FTE',
   'santiago':'SCL','montevideo':'MVD','punta del este':'PDP',
   'havana':'HAV','punta cana':'PUJ','republica dominicana':'PUJ',
-
-  // ===================== EUROPA =====================
   'lisboa':'LIS','porto':'OPO','faro':'FAO','funchal':'FNC','madeira':'FNC',
   'madrid':'MAD','barcelona':'BCN','valencia':'VLC','sevilla':'SVQ','sevilha':'SVQ','malaga':'AGP','mallorca':'PMI','palma de mallorca':'PMI','ibiza':'IBZ','tenerife':'TCI','gran canaria':'LPA',
   'londres':'LON','manchester':'MAN','edimburgo':'EDI','dublin':'DUB',
@@ -297,14 +266,10 @@ const IATA_HINTS = {
   'copenhague':'CPH','estocolmo':'STO','oslo':'OSL','helsinki':'HEL',
   'roma':'ROM','veneza':'VCE','milao':'MIL','milão':'MIL','florenca':'FLR','florença':'FLR','napoles':'NAP','nápoles':'NAP',
   'atenas':'ATH','santorini':'JTR','mykonos':'JMK',
-
-  // ===================== ÁFRICA & ORIENTE MÉDIO =====================
   'casablanca':'CMN','marrakesh':'RAK','marraquesh':'RAK','agadir':'AGA',
   'cairo':'CAI','hurghada':'HRG','sharm el sheikh':'SSH',
   'johanesburgo':'JNB','cidade do cabo':'CPT','cape town':'CPT','nairobi':'NBO',
   'istambul':'IST','istanbul':'IST','dubai':'DXB','abu dhabi':'AUH','doha':'DOH','tel aviv':'TLV',
-
-  // ===================== ÁSIA-PACÍFICO =====================
   'toquio':'TYO','tokyo':'TYO',
   'osaka':'OSA','kyoto':'OSA','nara':'OSA',
   'seul':'SEL',
@@ -319,8 +284,6 @@ const IATA_HINTS = {
   'delhi':'DEL','mumbai':'BOM','bangalore':'BLR','chennai':'MAA','hyderabad':'HYD','goa':'GOI',
   'sydney':'SYD','melbourne':'MEL','brisbane':'BNE','perth':'PER','adelaide':'ADL',
   'auckland':'AKL','queenstown':'ZQN','wellington':'WLG','christchurch':'CHC',
-
-  // ===================== PAÍSES → HUB PRINCIPAL =====================
   'portugal':'LIS','espanha':'MAD','franca':'PAR','france':'PAR',
   'italia':'ROM','italy':'ROM','alemanha':'BER','germany':'BER',
   'reino unido':'LON','uk':'LON','united kingdom':'LON','irlanda':'DUB',
@@ -494,19 +457,24 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
     return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
   }
 
-  const callApi = async ({ o, d, dep, retAt }) => {
+  const callApi = async ({ o, d, dep, retAt, page = 1 }) => {
     const qs = new URLSearchParams({
       origin: o,
       destination: d,
       departure_at: dep,
       ...(retAt ? { return_at: retAt } : {}),
+      // 🔧 ajustes importantes:
+      one_way: retAt ? 'false' : 'true', // round-trip => one_way=false
+      market: 'br',                      // cache do mercado brasileiro
+      direct: 'false',                   // permitir conexões
+      page: String(page),
       currency: 'BRL',
       sorting: 'price',
       limit: String(limit),
       unique: 'false'
     });
     const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
-    log(`[${reqId}] Flights request`, { origin: o, destination: d, depart: dep, return_at: retAt || null, url });
+    log(`[${reqId}] Flights request`, { origin: o, destination: d, departure_at: dep, return_at: retAt || null, url });
 
     console.time(`[${reqId}] flights_api ${o}->${d} ${dep}${retAt ? ' + ' + retAt : ''}`);
     const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
@@ -581,7 +549,7 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
 
     return {
       provider: 'Travelpayouts',
-      note: 'Viagem >30 dias ou sem volta: resultados de ida e volta listados separadamente. (Limite da API)',
+      note: 'Resultados a partir do cache do mercado BR. Viagem >30 dias ou round-trip vazio: exibindo ida e volta separadas (fallback).',
       items_combined: combined.slice(0, limit),
       items_outbound,
       items_return
@@ -601,10 +569,22 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
     return { error: rt.data?.message || rt.data?._raw || 'Erro na API Travelpayouts', _raw: rt.data, status: rt.status };
   }
 
-  const items = mapItems(rt.data?.data, { o: origin, d: destination, dep: depart, retAt: ret });
+  const arr = Array.isArray(rt.data?.data) ? rt.data.data : [];
+  // 🔁 Se a busca RT vier vazia (cache sem hits), acionamos o fallback one-way
+  if (arr.length === 0) {
+    log(`[${reqId}] round-trip vazio — fallback one-way`);
+    return await searchFlightsAviasales({ origin, destination, depart, ret, limit, reqId, _forceFallback: true });
+  }
+
+  const items = mapItems(arr, { o: origin, d: destination, dep: depart, retAt: ret });
   log(`[${reqId}] Flights OK`, { count: items.length, sample: items[0] || null });
 
-  return { items, provider: 'Travelpayouts', _raw: rt.data };
+  return {
+    items,
+    provider: 'Travelpayouts',
+    note: 'Resultados a partir do cache do mercado BR.',
+    _raw: rt.data
+  };
 }
 
 /* ----------------------- handler ----------------------- */
@@ -1126,7 +1106,8 @@ Contexto:
         </table>`;
     })();
 
-    if (emailDestino && SENDGRID_API_KEY && MAIL_FROM) {
+    const SEND_EMAIL = Boolean(SENDGRID_API_KEY && MAIL_FROM && emailDestino);
+    if (SEND_EMAIL) {
       const assunto = `Roteiro • ${destinoLabelFull} • ${BRAND_NAME}`;
       const html = `
 <div style="font-family:Arial,Helvetica,sans-serif;padding:24px;background:#f6f9fc">
