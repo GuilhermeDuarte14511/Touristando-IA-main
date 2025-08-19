@@ -578,7 +578,7 @@
   <script>
     // ========= AOS =========
     AOS.init({ duration: 800, easing: 'ease-out-cubic', once: true, offset: 80 });
-
+  
     // ========= refs =========
     const $wizard = $('#wizard');
     const $steps = $('.step');
@@ -590,9 +590,16 @@
     const $sk = $('#skeleton'), $progBox = $('#progressBox'), $res = $('#result'), $resRaw = $('#resultRaw');
     const $btnCopy = $('#btnCopy'), $btnCopyHTML = $('#btnCopyHTML'), $btnDownload = $('#btnDownload'), $btnPdf = $('#btnPdf'), $btnToggleRaw = $('#btnToggleRaw'), $btnZoom = $('#btnZoom');
     const $metaChips = $('#metaChips');
+  
+    // Flights (HTML novo + fallback antigo)
     const $flightsBox = $('#flightsBox'), $flightsContent = $('#flightsContent'), $flightNote = $('#flightNote');
+    const $flightsTbodyCombined = $('#flightsTbodyCombined'); // nova aba "Combinadas"
+    const $flightsTbodyOutbound = $('#flightsTbodyOutbound'); // nova aba "Somente ida"
+    const $flightsTbodyReturn   = $('#flightsTbodyReturn');   // nova aba "Somente volta"
+    const $flightsEmpty         = $('#flightsEmpty');         // linha "sem resultados" (opcional)
+  
     const toast = new bootstrap.Toast(document.getElementById('toast'), { delay: 2000 });
-
+  
     const $destino = $('#destino'),
           $dataIda = $('#dataIda'),
           $dataVolta = $('#dataVolta'),
@@ -604,15 +611,15 @@
           $perfil = $('#perfil'),
           $estilo = $('#estilo'),
           $email = $('#email');
-
+  
     // ========= state =========
     let current = 1, isLoading = false, lastMd = '', lastHtml = '', contentIsHtml = false;
     $stepTotal.text(totalSteps);
-
+  
     // ===== extra state for flights sorting =====
     let flightsState = null;           // { meta, note, items, items_combined, items_outbound, items_return }
     let flightSort = 'default';        // 'default' | 'price' | 'stops' | 'duration'
-
+  
     // ========= helpers =========
     const mkTag = (icon, text) => $(`<span class="tag"><i class="${icon}"></i> ${text}</span>`);
     const mkChip = (icon, text) => $(`<span class="chip"><i class="${icon}"></i> ${text}</span>`);
@@ -661,7 +668,7 @@
         return h*60 + m;
       }catch{ return Infinity; }
     };
-
+  
     function updateSummary() {
       $liveTags.empty();
       if ($destino.val().trim()) $liveTags.append(mkTag('fa-solid fa-location-dot', $destino.val().trim()));
@@ -676,19 +683,19 @@
       if ($estilo.val()) $liveTags.append(mkTag('fa-solid fa-heart', `Estilo: ${$estilo.val()}`));
       if ($email.val().trim()) $liveTags.append(mkTag('fa-regular fa-envelope', $email.val().trim()));
     }
-
+  
     function recalcDiasFromDates(){
       if ($dataIda.val() && $dataVolta.val()){
         const dd = daysDiff($dataIda.val(), $dataVolta.val());
         if (dd && dd > 0) $dias.val(dd);
       }
     }
-
+  
     function syncBudgets(){
       const p  = parseInt($pessoas.val() || 0, 10);
       const pp = parseFloat($orcPessoa.val() || 0);
       const tt = parseFloat($orc.val() || 0);
-
+  
       if (p > 0 && pp > 0) {
         const calc = Math.round(p * pp);
         $orc.val(calc).prop('disabled', true).attr('title', 'Calculado automaticamente: pessoas × valor por pessoa');
@@ -703,7 +710,7 @@
       updateSummary();
       buildReview();
     }
-
+  
     [$destino,$dataIda,$dataVolta,$origem,$dias,$pessoas,$orcPessoa,$orc,$perfil,$estilo,$email].forEach($el =>
       $el.on('input change', ()=>{
         if($el.is($dataIda) || $el.is($dataVolta)) recalcDiasFromDates();
@@ -711,13 +718,13 @@
       })
     );
     updateSummary();
-
+  
     function setAlert(msg){
       $alert.html(msg).removeClass('d-none').addClass('animate__animated animate__shakeX');
       setTimeout(()=> $alert.removeClass('animate__animated animate__shakeX'), 600);
     }
     function clearAlert(){ $alert.addClass('d-none').text(''); }
-
+  
     function showStep(n){
       current = n;
       $steps.addClass('hidden');
@@ -734,7 +741,7 @@
       buildReview();
       setTimeout(()=> { const $input = $steps.filter(`[data-step="${n}"]`).find('input,select').first(); $input.trigger('focus'); }, 80);
     }
-
+  
     function buildReview(){
       $reviewTags.empty();
       if(current!==totalSteps) return;
@@ -752,7 +759,7 @@
       if ($estilo.val()) $reviewTags.append(mkTag('fa-solid fa-heart', `Estilo: ${$estilo.val()}`));
       $reviewTags.append(mkTag('fa-regular fa-envelope', $email.val().trim() || 'Não enviar por e-mail'));
     }
-
+  
     function validateStep(n){
       if(n===1 && !$destino.val().trim()) { setAlert('Informe o destino (país/estado/cidade).'); return false; }
       if(n===2){
@@ -767,10 +774,10 @@
       if(n===8){ const e = $email.val().trim(); if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; } }
       return true;
     }
-
+  
     function nextStep(){ if(!isLoading && validateStep(current) && current<totalSteps) showStep(current+1); }
     function prevStep(){ if(!isLoading && current>1) showStep(current-1); }
-
+  
     $wizard.on('keydown', 'input,select', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); (current<totalSteps? nextStep(): null); }});
     document.addEventListener('keydown', (e)=>{
       if(e.ctrlKey && e.key === 'Enter' && current===totalSteps){ e.preventDefault(); generate(); }
@@ -778,7 +785,7 @@
     });
     $btnNext.on('click', nextStep);
     $btnBack.on('click', prevStep);
-
+  
     $btnReset.on('click', ()=>{
       if(isLoading) return;
       localStorage.removeItem('touristando_state');
@@ -786,7 +793,15 @@
       updateSummary(); clearAlert();
       showStep(1);
       $metaChips.empty();
-      $flightsBox.addClass('d-none').find('#flightsContent').empty();
+  
+      // limpar flights em TODOS os layouts
+      $flightsBox.addClass('d-none');
+      $flightsContent.empty();
+      $flightsTbodyCombined.empty();
+      $flightsTbodyOutbound.empty();
+      $flightsTbodyReturn.empty();
+      if($flightsEmpty.length) $flightsEmpty.removeClass('d-none');
+  
       $res.removeClass('hidden'); $resRaw.addClass('hidden');
       $res.html('<p>Conclua o assistente e gere seu roteiro.</p>');
       flightsState = null; flightSort = 'default';
@@ -794,7 +809,7 @@
       $('.flight-sort [data-sort="default"]').addClass('active').attr('aria-pressed','true');
       window.scrollTo({top:0, behavior:'smooth'});
     });
-
+  
     // ====== Loading ======
     let progTimer=null, loadingPhrases=[
       'Buscando moeda e país do destino…',
@@ -828,7 +843,7 @@
       clearInterval(progTimer); progTimer=null; $('.progress-bar').css('width','100%');
       setTimeout(()=> $('.progress-bar').css('width', `${Math.max(12, Math.round((current-1)/(totalSteps-1)*100))}%`), 500);
     }
-
+  
     // ====== persistência local ======
     function persistState(){
       const st = {
@@ -865,9 +880,67 @@
         updateSummary();
       }catch{}
     })();
-
-    // ====== Flights box renderer (com fallback + ordenação) ======
-    function flightsTable(rows){
+  
+    // ====== Flights box renderer (tabs + ordenação) ======
+    const normalizeList = (arr, type) => (arr||[]).map((v,i)=>({
+      rank: i,
+      type,
+      from: v.from || '',
+      to: v.to || '',
+      depart: v.depart || '',
+      return: v.return || '',
+      airline: v.airline || '-',
+      stops: Number.isFinite(+v.stops) ? +v.stops : (Number(v.stops) || 0),
+      durationText: v.duration || '-',
+      durationMin: durationToMin(v.duration),
+      priceBRL: Number.isFinite(+v.price_number) ? +v.price_number : parsePriceBRL(v.price),
+      priceRaw: v.price || '',
+      deep_link: v.deep_link || '',
+      combo: v._combo || null // quando vier ida/volta separadas
+    }));
+  
+    const sortItems = (arr, metric) => {
+      const c = (arr||[]).slice();
+      if (metric === 'price') {
+        c.sort((a,b)=> ((a.priceBRL ?? Infinity) - (b.priceBRL ?? Infinity)) || (a.rank-b.rank));
+      } else if (metric === 'stops') {
+        c.sort((a,b)=> ((a.stops ?? Infinity) - (b.stops ?? Infinity)) || (a.rank-b.rank));
+      } else if (metric === 'duration') {
+        c.sort((a,b)=> ((a.durationMin ?? Infinity) - (b.durationMin ?? Infinity)) || (a.rank-b.rank));
+      } else {
+        c.sort((a,b)=> a.rank - b.rank);
+      }
+      return c;
+    };
+  
+    function rowGeneric(it, meta, withReturn, linkMode){
+      const dates = fmtDateBR(it.depart) + (withReturn && it.return ? ' · ' + fmtDateBR(it.return) : '');
+      const priceOut = Number.isFinite(it.priceBRL) ? showBRLAndLocal(it.priceBRL, meta) : (it.priceRaw || '-');
+  
+      let links = '';
+      if (linkMode === 'single' && it.deep_link) {
+        links = `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${it.deep_link}">Ver</a>`;
+      } else if (linkMode === 'combo' && it.combo) {
+        const l1 = it.combo?.outbound?.deep_link, l2 = it.combo?.back?.deep_link;
+        const a1 = l1 ? `<a class="btn btn-outline-light btn-sm me-1" target="_blank" rel="noopener" href="${l1}">Ida</a>` : '';
+        const a2 = l2 ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${l2}">Volta</a>` : '';
+        links = a1 + a2;
+      }
+  
+      return `
+        <tr>
+          <td>${it.from} → ${it.to}</td>
+          <td>${dates}</td>
+          <td>${it.airline}</td>
+          <td>${it.stops}x</td>
+          <td>${it.durationText}</td>
+          <td>${priceOut}</td>
+          <td>${links}</td>
+        </tr>`;
+    }
+  
+    function flightsTableFallback(rowsHtml){
+      // usado somente quando o HTML novo (tbodys) não existe
       return `
         <div class="table-responsive">
           <table class="table table-sm table-borderless align-middle mb-2">
@@ -882,124 +955,115 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>${rowsHtml}</tbody>
           </table>
         </div>`;
     }
-
-    const normalizeList = (arr, type) => (arr||[]).map((v,i)=>({
-      rank: i,
-      type,
-      from: v.from || '',
-      to: v.to || '',
-      depart: v.depart || '',
-      return: v.return || '',
-      airline: v.airline || '-',
-      stops: Number.isFinite(+v.stops) ? +v.stops : (Number(v.stops) || 0),
-      durationText: v.duration || '-',
-      durationMin: durationToMin(v.duration),
-      priceBRL: Number.isFinite(+v.price_number) ? +v.price_number : parsePriceBRL(v.price),
-      priceRaw: v.price || '',
-      deep_link: v.deep_link || ''
-    }));
-
-    const sortItems = (arr, metric) => {
-      const c = (arr||[]).slice();
-      if (metric === 'price') {
-        c.sort((a,b)=> ( (a.priceBRL ?? Infinity) - (b.priceBRL ?? Infinity) ) || (a.rank-b.rank));
-      } else if (metric === 'stops') {
-        c.sort((a,b)=> ( (a.stops ?? Infinity) - (b.stops ?? Infinity) ) || (a.rank-b.rank));
-      } else if (metric === 'duration') {
-        c.sort((a,b)=> ( (a.durationMin ?? Infinity) - (b.durationMin ?? Infinity) ) || (a.rank-b.rank));
-      } else {
-        c.sort((a,b)=> a.rank - b.rank);
-      }
-      return c;
-    };
-
-    function rowGeneric(it, meta, withReturn, showLink){
-      const dates = fmtDateBR(it.depart) + (withReturn && it.return ? ' · ' + fmtDateBR(it.return) : '');
-      const priceOut = Number.isFinite(it.priceBRL) ? showBRLAndLocal(it.priceBRL, meta) : (it.priceRaw || '-');
-      const link = (showLink && it.deep_link) ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${it.deep_link}">Ver</a>` : '';
-      return `
-        <tr>
-          <td>${it.from} → ${it.to}</td>
-          <td>${dates}</td>
-          <td>${it.airline}</td>
-          <td>${it.stops}x</td>
-          <td>${it.durationText}</td>
-          <td>${priceOut}</td>
-          <td>${link}</td>
-        </tr>`;
-    }
-
+  
     function renderFlightsTables(){
       if (!flightsState) { $flightsBox.addClass('d-none'); return; }
       const meta = flightsState.meta || {};
+  
+      const useNewLayout = ($flightsTbodyCombined.length + $flightsTbodyOutbound.length + $flightsTbodyReturn.length) > 0;
+  
+      // ---------- NOVO LAYOUT (tabs com tbodys) ----------
+      if (useNewLayout) {
+        // qual lista vai na aba "Combinadas": se a API trouxe RT normal (items), usa ela; senão usa items_combined
+        const combinedList = (flightsState.items && flightsState.items.length)
+          ? { list: flightsState.items, linkMode: 'single' }
+          : { list: flightsState.items_combined, linkMode: 'combo' };
+  
+        const setRows = (list, $tbody, withReturn, linkMode) => {
+          if (!$tbody.length) return;
+          if (list && list.length) {
+            const rows = sortItems(list, flightSort).slice(0, 10)
+              .map(it => rowGeneric(it, meta, withReturn, linkMode)).join('');
+            $tbody.html(rows);
+          } else {
+            $tbody.html(`<tr><td colspan="7" class="text-white-50">Nenhum voo nesta aba.</td></tr>`);
+          }
+        };
+  
+        setRows(combinedList.list,           $flightsTbodyCombined, true,  combinedList.linkMode);
+        setRows(flightsState.items_outbound, $flightsTbodyOutbound, false, 'single');
+        setRows(flightsState.items_return,   $flightsTbodyReturn,   false, 'single');
+  
+        const any = (combinedList.list?.length||0) + (flightsState.items_outbound?.length||0) + (flightsState.items_return?.length||0) > 0;
+        if($flightsEmpty.length) $flightsEmpty.toggleClass('d-none', any);
+  
+        $flightNote.text(flightsState.note || '');
+        $flightsBox.removeClass('d-none');
+        return;
+      }
+  
+      // ---------- FALLBACK (layout antigo com #flightsContent) ----------
       let html = '';
-
-      // Round-trip normal
       if (flightsState.items && flightsState.items.length){
-        const rows = sortItems(flightsState.items, flightSort).slice(0,6).map(it => rowGeneric(it, meta, true, true)).join('');
-        html += flightsTable(rows);
+        const rows = sortItems(flightsState.items, flightSort).slice(0,6)
+          .map(it => rowGeneric(it, meta, true, 'single')).join('');
+        html += flightsTableFallback(rows);
       }
-
-      // Fallback combos
       if (flightsState.items_combined && flightsState.items_combined.length){
-        const rowsC = sortItems(flightsState.items_combined, flightSort).slice(0,6).map(it => rowGeneric(it, meta, true, false)).join('');
-        html += `<h6 class="mt-2">Sugestões (ida + volta combinadas)</h6>${flightsTable(rowsC)}`;
+        const rowsC = sortItems(flightsState.items_combined, flightSort).slice(0,6)
+          .map(it => rowGeneric(it, meta, true, 'combo')).join('');
+        html += `<h6 class="mt-2">Sugestões (ida + volta combinadas)</h6>${flightsTableFallback(rowsC)}`;
       }
-
-      // Ida
       if (flightsState.items_outbound && flightsState.items_outbound.length){
-        const rowsO = sortItems(flightsState.items_outbound, flightSort).slice(0,6).map(it => rowGeneric(it, meta, false, true)).join('');
-        html += `<h6 class="mt-2">Somente ida</h6>${flightsTable(rowsO)}`;
+        const rowsO = sortItems(flightsState.items_outbound, flightSort).slice(0,6)
+          .map(it => rowGeneric(it, meta, false, 'single')).join('');
+        html += `<h6 class="mt-2">Somente ida</h6>${flightsTableFallback(rowsO)}`;
       }
-
-      // Volta
       if (flightsState.items_return && flightsState.items_return.length){
-        const rowsR = sortItems(flightsState.items_return, flightSort).slice(0,6).map(it => rowGeneric(it, meta, false, true)).join('');
-        html += `<h6 class="mt-2">Somente volta</h6>${flightsTable(rowsR)}`;
+        const rowsR = sortItems(flightsState.items_return, flightSort).slice(0,6)
+          .map(it => rowGeneric(it, meta, false, 'single')).join('');
+        html += `<h6 class="mt-2">Somente volta</h6>${flightsTableFallback(rowsR)}`;
       }
-
       if (!html){
         html = `<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>Nenhuma oferta encontrada para os parâmetros informados.</div>`;
       }
-
       $flightNote.text(flightsState.note || '');
       $flightsContent.html(html);
       $flightsBox.removeClass('d-none');
     }
-
+  
     function renderFlights(data){
-      $flightsContent.empty();
+      // placeholders
       $flightNote.text('');
+      if ($flightsTbodyCombined.length) $flightsTbodyCombined.html(`<tr><td colspan="7" class="text-white-50">Buscando combinações de ida + volta…</td></tr>`);
+      if ($flightsTbodyOutbound.length) $flightsTbodyOutbound.html(`<tr><td colspan="7" class="text-white-50">Carregando voos de ida…</td></tr>`);
+      if ($flightsTbodyReturn.length)   $flightsTbodyReturn.html(`<tr><td colspan="7" class="text-white-50">Carregando voos de volta…</td></tr>`);
+      $flightsContent.empty();
+  
       const f = data?.flights || data?.passagens || null;
       console.log('[front][flights] payload:', f, 'reqId:', data?.reqId);
-
+  
       if (!f) { $flightsBox.addClass('d-none'); flightsState = null; return; }
-
+  
       if (f.error) {
         flightsState = null;
-        $flightsContent.html(`<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>${f.error}</div>`);
+        if ($flightsTbodyCombined.length) {
+          $flightsTbodyCombined.html(`<tr><td colspan="7" class="text-warning">${f.error}</td></tr>`);
+        } else {
+          $flightsContent.html(`<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>${f.error}</div>`);
+        }
         $flightsBox.removeClass('d-none');
         return;
       }
-
+  
       // Captura/normaliza para permitir ordenação
       const meta = data?.meta || {};
       flightsState = {
         meta,
         note: f.note || '',
-        items: normalizeList(f.items, 'items'),
+        items:          normalizeList(f.items, 'items'),
         items_combined: normalizeList(f.items_combined, 'items_combined'),
         items_outbound: normalizeList(f.items_outbound, 'items_outbound'),
-        items_return: normalizeList(f.items_return, 'items_return')
+        items_return:   normalizeList(f.items_return, 'items_return')
       };
-
+  
       renderFlightsTables();
     }
-
+  
     // ====== Ordenação: binds do "switch" ======
     (function bindFlightSort(){
       $('.flight-sort [data-sort]').on('click', function(){
@@ -1010,7 +1074,7 @@
         renderFlightsTables();
       });
     })();
-
+  
     // ====== generate ======
     async function generate(){
       if(!validateStep(totalSteps) || isLoading) return;
@@ -1028,28 +1092,36 @@
         emailDestino: $email.val().trim() || null
       };
       setLoading(true);
-      $flightsBox.addClass('d-none').find('#flightsContent').empty();
+  
+      // limpar antes de gerar
+      $flightsBox.addClass('d-none');
+      $flightsContent.empty();
+      $flightsTbodyCombined.empty();
+      $flightsTbodyOutbound.empty();
+      $flightsTbodyReturn.empty();
+      if($flightsEmpty.length) $flightsEmpty.removeClass('d-none');
+  
       $res.html('<p>Solicitando à IA…</p>');
       document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-
+  
       try{
         const resp = await fetch('/api/roteiro', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const data = await resp.json();
         console.log('[front] /api/roteiro response:', { status: resp.status, reqId: data?.reqId, meta: data?.meta, flights: data?.flights });
         if(!resp.ok) throw new Error(data?.error || 'Falha ao gerar roteiro');
-
+  
         // Meta chips
         $metaChips.empty();
         const meta = data.meta || {};
         const tripIda = meta.data_ida || payload.data_ida;
         const tripVolta = meta.data_volta || payload.data_volta;
         const tripOrigem = meta.origem || payload.origem;
-
+  
         if(meta.destino) $metaChips.append(mkChip('fa-solid fa-map-pin', meta.destino));
         if(tripOrigem) $metaChips.append(mkChip('fa-solid fa-location-arrow', `Origem: ${tripOrigem}`));
         if(tripIda) $metaChips.append(mkChip('fa-solid fa-plane-departure', `Ida: ${fmtDateBR(tripIda)}`));
         if(tripVolta) $metaChips.append(mkChip('fa-solid fa-plane-arrival', `Volta: ${fmtDateBR(tripVolta)}`));
-
+  
         if(meta.pessoas) $metaChips.append(mkChip('fa-solid fa-user-group', `${meta.pessoas} pessoa(s)`));
         if(meta.estilo)  $metaChips.append(mkChip('fa-solid fa-heart', `Estilo: ${meta.estilo}`));
         if(meta.currency_code) $metaChips.append(mkChip('fa-solid fa-money-bill', `Moeda: ${meta.currency_code}`));
@@ -1061,12 +1133,12 @@
         if(meta.orcamento_por_pessoa){ $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`)); }
         if(meta.orcamento){ $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(meta.orcamento).toLocaleString('pt-BR')}`)); }
         if(data.reqId){ $metaChips.append(mkChip('fa-solid fa-hashtag', `reqId: ${data.reqId}`)); }
-
+  
         // ===== Renderização do conteúdo =====
         const raw = (data.texto || '').trim();
         const looksLikeHtml = /^\s*</.test(raw);
         const purifyHtmlOpts = { ALLOW_DATA_ATTR: true, ADD_ATTR: ['style'] };
-
+  
         if (data.render_as === 'html' || looksLikeHtml) {
           contentIsHtml = true;
           lastMd = '';
@@ -1086,14 +1158,14 @@
           $res.html(lastHtml);
           $resRaw.find('code').text(lastMd);
         }
-
-        // Flights (com ordenação)
+  
+        // Flights (com ordenação + novos tbodys)
         renderFlights(data);
-
+  
         $btnCopy.toggle(!contentIsHtml);
         $btnDownload.toggle(!contentIsHtml);
         $btnCopyHTML.toggle(true);
-
+  
         confetti({ particleCount: 90, spread: 90, origin:{ y: 0.2 }});
         $('#toastText').text('Roteiro gerado!');
         toast.show();
@@ -1105,18 +1177,18 @@
       }
     }
     $btnGenerate.on('click', generate);
-
+  
     // Ações do resultado
     $btnCopy.on('click', async ()=>{
       try{ await navigator.clipboard.writeText(lastMd || ($res.text() || '')); $('#toastText').text('Markdown copiado!'); toast.show(); }
       catch(_){ setAlert('Não foi possível copiar.'); }
     });
-
+  
     $btnCopyHTML.on('click', async ()=>{
       try{ await navigator.clipboard.writeText(lastHtml || $res.html() || ''); $('#toastText').text('HTML copiado!'); toast.show(); }
       catch(_){ setAlert('Não foi possível copiar HTML.'); }
     });
-
+  
     $btnDownload.on('click', ()=>{
       const content = lastMd || $res.text() || '';
       const blob = new Blob([content], {type:'text/markdown;charset=utf-8'});
@@ -1125,7 +1197,7 @@
       a.download = `roteiro_${name}.md`; document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(a.href);
     });
-
+  
     $btnPdf.on('click', ()=>{
       const element = document.createElement('div');
       element.innerHTML = `
@@ -1136,16 +1208,16 @@
       const opt = { margin: 10, filename: `roteiro_${($destino.val()||'destino').toString().replace(/[^\w\-]+/g,'_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
       html2pdf().from(element).set(opt).save();
     });
-
+  
     $btnToggleRaw.on('click', ()=>{
       const rawMode = !$resRaw.hasClass('hidden');
       if(rawMode){ $resRaw.addClass('hidden'); $res.removeClass('hidden'); }
       else{ $res.addClass('hidden'); $resRaw.removeClass('hidden'); }
     });
-
+  
     let zoomed = false;
     $btnZoom.on('click', ()=>{ zoomed = !zoomed; $res.css('font-size', zoomed ? '1.08rem' : ''); $res.find('h1,h2').css('font-size', zoomed ? '' : ''); });
-
+  
     // Back to top + scroll progress
     const $backTop = $('#backTop');
     $(window).on('scroll', ()=>{
@@ -1155,7 +1227,7 @@
       document.getElementById('scrollProgress').style.width = pct + '%';
     });
     $backTop.on('click', ()=> window.scrollTo({top:0, behavior:'smooth'}));
-
+  
     // efeito tilt
     (function tilt(){
       const els = document.querySelectorAll('.tilt');
@@ -1169,9 +1241,9 @@
         el.addEventListener('mouseleave', ()=>{ el.style.transform = ''; });
       });
     })();
-
+  
     // init
     showStep(1);
-  </script>
+  </script>  
 </body>
 </html>
