@@ -390,11 +390,22 @@
 
           <!-- FLIGHTS BOX (beta) -->
           <div id="flightsBox" class="border rounded-3 p-3 mb-3 d-none" style="border-color: var(--border); background:linear-gradient(180deg,#0f1428,#0b1122);">
-            <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
               <i class="fa-solid fa-plane-up text-info"></i>
               <strong>Passagens aéreas</strong>
               <span class="tiny text-white-50">(beta)</span>
               <span id="flightNote" class="tiny ms-2 text-white-50"></span>
+
+              <!-- Ordenação -->
+              <div class="ms-auto d-flex align-items-center gap-2 flight-sort">
+                <span class="tiny text-white-50">Ordenar:</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar voos">
+                  <button type="button" class="btn btn-outline-light active" data-sort="default" aria-pressed="true" title="Padrão"><i class="fa-solid fa-list"></i></button>
+                  <button type="button" class="btn btn-outline-light" data-sort="price" title="Menor preço"><i class="fa-solid fa-tag me-1"></i>Preço</button>
+                  <button type="button" class="btn btn-outline-light" data-sort="stops" title="Menos paradas"><i class="fa-solid fa-route me-1"></i>Paradas</button>
+                  <button type="button" class="btn btn-outline-light" data-sort="duration" title="Menor duração"><i class="fa-regular fa-clock me-1"></i>Duração</button>
+                </div>
+              </div>
             </div>
             <div id="flightsContent" class="tiny">As ofertas de voos aparecerão aqui quando o backend retornar resultados.</div>
           </div>
@@ -492,6 +503,10 @@
     let current = 1, isLoading = false, lastMd = '', lastHtml = '', contentIsHtml = false;
     $stepTotal.text(totalSteps);
 
+    // ===== extra state for flights sorting =====
+    let flightsState = null;           // { meta, note, items, items_combined, items_outbound, items_return }
+    let flightSort = 'default';        // 'default' | 'price' | 'stops' | 'duration'
+
     // ========= helpers =========
     const mkTag = (icon, text) => $(`<span class="tag"><i class="${icon}"></i> ${text}</span>`);
     const mkChip = (icon, text) => $(`<span class="chip"><i class="${icon}"></i> ${text}</span>`);
@@ -528,6 +543,17 @@
       if (!fx || !fx.brl_to_local || !code || code === 'BRL') return base;
       const local = priceBRL * Number(fx.brl_to_local);
       return `${base} (~${fmtLocal(local, code)})`;
+    };
+    const durationToMin = (s) => {
+      try{
+        if(!s) return Infinity;
+        const str = String(s).toLowerCase().replace(/min/g,'m').replace(/[^0-9hm]/g,'');
+        const mh = str.match(/(\d+)h/); const mm = str.match(/(\d+)m/);
+        const h = mh ? parseInt(mh[1],10) : 0;
+        const m = mm ? parseInt(mm[1],10) : 0;
+        if(!h && !m) return Infinity;
+        return h*60 + m;
+      }catch{ return Infinity; }
     };
 
     function updateSummary() {
@@ -657,6 +683,9 @@
       $flightsBox.addClass('d-none').find('#flightsContent').empty();
       $res.removeClass('hidden'); $resRaw.addClass('hidden');
       $res.html('<p>Conclua o assistente e gere seu roteiro.</p>');
+      flightsState = null; flightSort = 'default';
+      $('.flight-sort [data-sort]').removeClass('active').attr('aria-pressed','false');
+      $('.flight-sort [data-sort="default"]').addClass('active').attr('aria-pressed','true');
       window.scrollTo({top:0, behavior:'smooth'});
     });
 
@@ -731,7 +760,7 @@
       }catch{}
     })();
 
-    // ====== Flights box renderer (com fallback) ======
+    // ====== Flights box renderer (com fallback + ordenação) ======
     function flightsTable(rows){
       return `
         <div class="table-responsive">
@@ -752,108 +781,129 @@
         </div>`;
     }
 
-    function renderFlights(data){
-      $flightsContent.empty();
-      $flightNote.text('');
-      const f = data?.flights || data?.passagens || null;
-      console.log('[front][flights] payload:', f, 'reqId:', data?.reqId);
+    const normalizeList = (arr, type) => (arr||[]).map((v,i)=>({
+      rank: i,
+      type,
+      from: v.from || '',
+      to: v.to || '',
+      depart: v.depart || '',
+      return: v.return || '',
+      airline: v.airline || '-',
+      stops: Number.isFinite(+v.stops) ? +v.stops : (Number(v.stops) || 0),
+      durationText: v.duration || '-',
+      durationMin: durationToMin(v.duration),
+      priceBRL: Number.isFinite(+v.price_number) ? +v.price_number : parsePriceBRL(v.price),
+      priceRaw: v.price || '',
+      deep_link: v.deep_link || ''
+    }));
 
-      if (!f) { $flightsBox.addClass('d-none'); return; }
-
-      // erro explícito
-      if (f.error) {
-        $flightsContent.html(`<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>${f.error}</div>`);
-        $flightsBox.removeClass('d-none');
-        return;
+    const sortItems = (arr, metric) => {
+      const c = (arr||[]).slice();
+      if (metric === 'price') {
+        c.sort((a,b)=> ( (a.priceBRL ?? Infinity) - (b.priceBRL ?? Infinity) ) || (a.rank-b.rank));
+      } else if (metric === 'stops') {
+        c.sort((a,b)=> ( (a.stops ?? Infinity) - (b.stops ?? Infinity) ) || (a.rank-b.rank));
+      } else if (metric === 'duration') {
+        c.sort((a,b)=> ( (a.durationMin ?? Infinity) - (b.durationMin ?? Infinity) ) || (a.rank-b.rank));
+      } else {
+        c.sort((a,b)=> a.rank - b.rank);
       }
+      return c;
+    };
 
-      const meta = data?.meta || {};
+    function rowGeneric(it, meta, withReturn, showLink){
+      const dates = fmtDateBR(it.depart) + (withReturn && it.return ? ' · ' + fmtDateBR(it.return) : '');
+      const priceOut = Number.isFinite(it.priceBRL) ? showBRLAndLocal(it.priceBRL, meta) : (it.priceRaw || '-');
+      const link = (showLink && it.deep_link) ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${it.deep_link}">Ver</a>` : '';
+      return `
+        <tr>
+          <td>${it.from} → ${it.to}</td>
+          <td>${dates}</td>
+          <td>${it.airline}</td>
+          <td>${it.stops}x</td>
+          <td>${it.durationText}</td>
+          <td>${priceOut}</td>
+          <td>${link}</td>
+        </tr>`;
+    }
+
+    function renderFlightsTables(){
+      if (!flightsState) { $flightsBox.addClass('d-none'); return; }
+      const meta = flightsState.meta || {};
       let html = '';
 
-      // 1) Round-trip normal
-      if (Array.isArray(f.items) && f.items.length){
-        const rows = f.items.slice(0,6).map(v=>{
-          const brl = parsePriceBRL(v.price);
-          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
-          return `
-            <tr>
-              <td>${(v.from || '')} → ${(v.to || '')}</td>
-              <td>${fmtDateBR(v.depart || '')}${v.return ? ' · '+fmtDateBR(v.return) : ''}</td>
-              <td>${v.airline || '-'}</td>
-              <td>${(v.stops ?? 0)}x</td>
-              <td>${v.duration || '-'}</td>
-              <td>${priceOut}</td>
-              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
-            </tr>`;
-        }).join('');
+      // Round-trip normal
+      if (flightsState.items && flightsState.items.length){
+        const rows = sortItems(flightsState.items, flightSort).slice(0,6).map(it => rowGeneric(it, meta, true, true)).join('');
         html += flightsTable(rows);
       }
 
-      // 2) Fallback >30d — combos + ida + volta
-      if (Array.isArray(f.items_combined) && f.items_combined.length){
-        $flightNote.text(f.note || 'Resultados em ida/volta separados (limite de 30 dias da API).');
-
-        // Combos
-        const rowsCombo = f.items_combined.slice(0,6).map(v=>{
-          const brl = Number(v.price_number);
-          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
-          return `
-            <tr>
-              <td>${v.from} → ${v.to}</td>
-              <td>${fmtDateBR(v.depart)} · ${fmtDateBR(v.return)}</td>
-              <td>${v.airline || '-'}</td>
-              <td>${(v.stops ?? 0)}x</td>
-              <td>${v.duration || '-'}</td>
-              <td>${priceOut}</td>
-              <td></td>
-            </tr>`;
-        }).join('');
-        html += `<h6 class="mt-2">Sugestões (ida + volta combinadas)</h6>${flightsTable(rowsCombo)}`;
+      // Fallback combos
+      if (flightsState.items_combined && flightsState.items_combined.length){
+        const rowsC = sortItems(flightsState.items_combined, flightSort).slice(0,6).map(it => rowGeneric(it, meta, true, false)).join('');
+        html += `<h6 class="mt-2">Sugestões (ida + volta combinadas)</h6>${flightsTable(rowsC)}`;
       }
 
-      if (Array.isArray(f.items_outbound) && f.items_outbound.length){
-        const rowsOut = f.items_outbound.slice(0,6).map(v=>{
-          const brl = Number(v.price_number ?? parsePriceBRL(v.price));
-          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
-          return `
-            <tr>
-              <td>${(v.from || '')} → ${(v.to || '')}</td>
-              <td>${fmtDateBR(v.depart || '')}</td>
-              <td>${v.airline || '-'}</td>
-              <td>${(v.stops ?? 0)}x</td>
-              <td>${v.duration || '-'}</td>
-              <td>${priceOut}</td>
-              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
-            </tr>`;
-        }).join('');
-        html += `<h6 class="mt-2">Somente ida</h6>${flightsTable(rowsOut)}`;
+      // Ida
+      if (flightsState.items_outbound && flightsState.items_outbound.length){
+        const rowsO = sortItems(flightsState.items_outbound, flightSort).slice(0,6).map(it => rowGeneric(it, meta, false, true)).join('');
+        html += `<h6 class="mt-2">Somente ida</h6>${flightsTable(rowsO)}`;
       }
 
-      if (Array.isArray(f.items_return) && f.items_return.length){
-        const rowsRt = f.items_return.slice(0,6).map(v=>{
-          const brl = Number(v.price_number ?? parsePriceBRL(v.price));
-          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
-          return `
-            <tr>
-              <td>${(v.from || '')} → ${(v.to || '')}</td>
-              <td>${fmtDateBR(v.depart || '')}</td>
-              <td>${v.airline || '-'}</td>
-              <td>${(v.stops ?? 0)}x</td>
-              <td>${v.duration || '-'}</td>
-              <td>${priceOut}</td>
-              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
-            </tr>`;
-        }).join('');
-        html += `<h6 class="mt-2">Somente volta</h6>${flightsTable(rowsRt)}`;
+      // Volta
+      if (flightsState.items_return && flightsState.items_return.length){
+        const rowsR = sortItems(flightsState.items_return, flightSort).slice(0,6).map(it => rowGeneric(it, meta, false, true)).join('');
+        html += `<h6 class="mt-2">Somente volta</h6>${flightsTable(rowsR)}`;
       }
 
       if (!html){
         html = `<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>Nenhuma oferta encontrada para os parâmetros informados.</div>`;
       }
 
+      $flightNote.text(flightsState.note || '');
       $flightsContent.html(html);
       $flightsBox.removeClass('d-none');
     }
+
+    function renderFlights(data){
+      $flightsContent.empty();
+      $flightNote.text('');
+      const f = data?.flights || data?.passagens || null;
+      console.log('[front][flights] payload:', f, 'reqId:', data?.reqId);
+
+      if (!f) { $flightsBox.addClass('d-none'); flightsState = null; return; }
+
+      if (f.error) {
+        flightsState = null;
+        $flightsContent.html(`<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>${f.error}</div>`);
+        $flightsBox.removeClass('d-none');
+        return;
+      }
+
+      // Captura/normaliza para permitir ordenação
+      const meta = data?.meta || {};
+      flightsState = {
+        meta,
+        note: f.note || '',
+        items: normalizeList(f.items, 'items'),
+        items_combined: normalizeList(f.items_combined, 'items_combined'),
+        items_outbound: normalizeList(f.items_outbound, 'items_outbound'),
+        items_return: normalizeList(f.items_return, 'items_return')
+      };
+
+      renderFlightsTables();
+    }
+
+    // ====== Ordenação: binds do "switch" ======
+    (function bindFlightSort(){
+      $('.flight-sort [data-sort]').on('click', function(){
+        if (!flightsState) return;                 // nada para ordenar ainda
+        flightSort = $(this).data('sort') || 'default';
+        $('.flight-sort [data-sort]').removeClass('active').attr('aria-pressed','false');
+        $(this).addClass('active').attr('aria-pressed','true');
+        renderFlightsTables();
+      });
+    })();
 
     // ====== generate ======
     async function generate(){
@@ -931,7 +981,7 @@
           $resRaw.find('code').text(lastMd);
         }
 
-        // Flights
+        // Flights (com ordenação)
         renderFlights(data);
 
         $btnCopy.toggle(!contentIsHtml);
