@@ -115,7 +115,17 @@ function extractResponsesText(obj) {
 
 /* ----------------------- IATA helpers ----------------------- */
 
+// normalizador: remove acentos, pontuação “leve” e múltiplos espaços
+const normalizeKey = (s='') =>
+  String(s)
+    .toLowerCase()
+    .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+    .replace(/[\(\)\[\]\{\}|·•–—\-_,.;:!?+@#%^*~'"`]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+
 const IATA_HINTS = {
+  // BR capitais
   'sao paulo': 'SAO', 'são paulo': 'SAO', 'sp': 'SAO', 'sampa': 'SAO',
   'rio de janeiro': 'RIO', 'rio': 'RIO',
   'belo horizonte': 'BHZ',
@@ -123,10 +133,37 @@ const IATA_HINTS = {
   'salvador': 'SSA', 'recife': 'REC', 'fortaleza': 'FOR',
   'curitiba': 'CWB', 'florianopolis': 'FLN', 'florianópolis': 'FLN',
   'porto alegre': 'POA', 'campinas': 'CPQ', 'viracopos': 'VCP',
+
+  // Europa/Américas agrupadores clássicos
   'lisboa': 'LIS', 'porto': 'OPO', 'londres': 'LON', 'paris': 'PAR',
   'roma': 'ROM', 'nova york': 'NYC', 'new york': 'NYC', 'miami': 'MIA',
-  'buenos aires': 'BUE', 'santiago': 'SCL', 'montevideo': 'MVD'
+  'buenos aires': 'BUE', 'santiago': 'SCL', 'montevideo': 'MVD',
+
+  // Destinos turísticos brasileiros SEM aeroporto na cidade
+  'maragogi': 'MCZ', 'maragogi al': 'MCZ', 'maragogi brasil': 'MCZ', 'maragoji': 'MCZ',
+  'porto de galinhas': 'REC',
+  'morro de sao paulo': 'SSA', 'morro de são paulo': 'SSA', 'boipeba': 'SSA',
+  'arraial dajuda': 'BPS', 'arraial d ajuda': 'BPS', 'arraial d\'ajuda': 'BPS',
+  'barra grande bahia': 'IOS', 'peninsula de marau': 'IOS', 'peninsula de marau bahia': 'IOS',
+  'barreirinhas': 'SLZ', // lençóis maranhenses
+  'jalapao': 'PMW',
+  'chapada diamantina': 'SSA', 'lencois bahia': 'SSA', 'lençóis bahia': 'SSA',
 };
+
+// aeroportos → código de CIDADE (agrupador) quando existir
+const AIRPORT_TO_CITY = {
+  GRU:'SAO', CGH:'SAO', VCP:'SAO',
+  GIG:'RIO', SDU:'RIO',
+  JFK:'NYC', EWR:'NYC', LGA:'NYC',
+  LHR:'LON', LGW:'LON', STN:'LON', LTN:'LON', LCY:'LON', SEN:'LON',
+  CDG:'PAR', ORY:'PAR', BVA:'PAR',
+  NRT:'TYO', HND:'TYO',
+};
+
+function preferCityCode(code='') {
+  const up = String(code || '').toUpperCase();
+  return AIRPORT_TO_CITY[up] || up;
+}
 
 function looksLikeIata(s='') {
   const m = String(s).toUpperCase().match(/\b([A-Z]{3})\b/);
@@ -135,15 +172,33 @@ function looksLikeIata(s='') {
 
 async function resolveIataTerm(term) {
   if (!term) return null;
+
+  // 1) se veio um código explícito no texto, retorna
   const direct = looksLikeIata(term);
   if (direct) return direct;
 
-  const hint = IATA_HINTS[term.trim().toLowerCase()];
-  if (hint) return hint;
+  // 2) tenta HINTS com várias variações normalizadas
+  const candidates = [];
+  const raw = String(term);
+  const byComma = raw.split(',')[0];
+  candidates.push(raw);
+  candidates.push(byComma);
+  candidates.push(normalizeKey(raw));
+  candidates.push(normalizeKey(byComma));
 
+  // remove país/complementos comuns (brasil/portugal/etc.)
+  const cleaned = normalizeKey(byComma).replace(/\b(brasil|brazil|portugal|espanha|italia|italy|franca|france)\b/g,'').trim();
+  if (cleaned) candidates.push(cleaned);
+
+  for (const c of candidates) {
+    const k = normalizeKey(c);
+    if (k && IATA_HINTS[k]) return IATA_HINTS[k];
+  }
+
+  // 3) autocomplete externo (Travelpayouts)
   try {
-    const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(term)}&locale=pt&types[]=city&types[]=airport`;
-    log('IATA autocomplete →', { term, url: url.replace(/term=[^&]+/, 'term=***') });
+    const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(byComma)}&locale=pt&types[]=city&types[]=airport`;
+    log('IATA autocomplete →', { term: byComma, url: url.replace(/term=[^&]+/, 'term=***') });
     const r = await fetchWithTimeout(url, {}, 12000);
     const data = await safeJson(r);
     log('IATA autocomplete status', r.status, 'hits:', Array.isArray(data) ? data.length : 0);
@@ -155,6 +210,7 @@ async function resolveIataTerm(term) {
       if (ap?.code) { log('IATA resolved (airport code)', term, '→', ap.code); return String(ap.code).toUpperCase(); }
     }
   } catch (e) { log('IATA autocomplete erro', String(e)); }
+
   log('IATA fallback/unknown for term', term);
   return null;
 }
@@ -786,13 +842,29 @@ Contexto:
         ? `${meta.normalized_name}, ${meta.country_name}`
         : (meta.normalized_name || destinoEntrada);
 
-    /* ---------- 5.1) Passagens aéreas (com fallback) ---------- */
+    /* ---------- 5.1) Passagens aéreas (com fallback + IATA robusto) ---------- */
     let flights = null;
     try {
       if (dataIda && dataVolta && origemEntrada) {
-        const originIata = await resolveIataTerm(origemEntrada);
-        const destIata = await resolveIataTerm(destinoEntrada);
+        // origem — tenta IATA direto, depois converte para "city code" se aplicável
+        const originRaw = await resolveIataTerm(origemEntrada);
+        const originIata = originRaw ? preferCityCode(originRaw) : null;
+
+        // destino — tenta várias combinações (ex.: "Maragogi" → MCZ via hints)
+        const tryTerms = [
+          destinoEntrada,
+          meta.normalized_name,
+          meta.country_name ? `${meta.normalized_name}, ${meta.country_name}` : null,
+        ].filter(Boolean);
+
+        let destIata = null;
+        for (const t of tryTerms) {
+          const r = await resolveIataTerm(t);
+          if (r) { destIata = preferCityCode(r); break; }
+        }
+
         log(`[${reqId}] IATA resolved`, { origemEntrada, originIata, destinoEntrada, destIata });
+
         if (originIata && destIata) {
           const f = await searchFlightsAviasales({
             origin: originIata,
