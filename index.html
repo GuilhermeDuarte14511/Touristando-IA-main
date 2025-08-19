@@ -389,26 +389,132 @@
           <div id="metaChips" class="d-flex flex-wrap gap-2 mb-2"></div>
 
           <!-- FLIGHTS BOX (beta) -->
-          <div id="flightsBox" class="border rounded-3 p-3 mb-3 d-none" style="border-color: var(--border); background:linear-gradient(180deg,#0f1428,#0b1122);">
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-              <i class="fa-solid fa-plane-up text-info"></i>
-              <strong>Passagens aéreas</strong>
-              <span class="tiny text-white-50">(beta)</span>
-              <span id="flightNote" class="tiny ms-2 text-white-50"></span>
+        <div id="flightsBox" class="border rounded-3 p-3 mb-3 d-none" style="border-color: var(--border); background:linear-gradient(180deg,#0f1428,#0b1122);">
+          <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <i class="fa-solid fa-plane-up text-info"></i>
+            <strong class="text-white">Passagens aéreas</strong>
+            <span class="tiny text-white-50">(beta)</span>
+            <span id="flightNote" class="tiny ms-2 text-white-50" aria-live="polite"></span>
 
-              <!-- Ordenação -->
-              <div class="ms-auto d-flex align-items-center gap-2 flight-sort">
-                <span class="tiny text-white-50">Ordenar:</span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar voos">
-                  <button type="button" class="btn btn-outline-light active" data-sort="default" aria-pressed="true" title="Padrão"><i class="fa-solid fa-list"></i></button>
-                  <button type="button" class="btn btn-outline-light" data-sort="price" title="Menor preço"><i class="fa-solid fa-tag me-1"></i>Preço</button>
-                  <button type="button" class="btn btn-outline-light" data-sort="stops" title="Menos paradas"><i class="fa-solid fa-route me-1"></i>Paradas</button>
-                  <button type="button" class="btn btn-outline-light" data-sort="duration" title="Menor duração"><i class="fa-regular fa-clock me-1"></i>Duração</button>
-                </div>
+            <!-- Ordenação -->
+            <div class="ms-auto d-flex align-items-center gap-2 flight-sort">
+              <span class="tiny text-white-50">Ordenar:</span>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar voos">
+                <button type="button" class="btn btn-outline-light active" data-sort="default" aria-pressed="true" title="Padrão">
+                  <i class="fa-solid fa-list"></i>
+                </button>
+                <button type="button" class="btn btn-outline-light" data-sort="price" title="Menor preço">
+                  <i class="fa-solid fa-tag me-1"></i>Preço
+                </button>
+                <button type="button" class="btn btn-outline-light" data-sort="stops" title="Menos paradas">
+                  <i class="fa-solid fa-route me-1"></i>Paradas
+                </button>
+                <button type="button" class="btn btn-outline-light" data-sort="duration" title="Menor duração">
+                  <i class="fa-regular fa-clock me-1"></i>Duração
+                </button>
               </div>
             </div>
-            <div id="flightsContent" class="tiny">As ofertas de voos aparecerão aqui quando o backend retornar resultados.</div>
           </div>
+
+          <!-- Abas -->
+          <ul class="nav nav-pills nav-fill gap-2 small mb-2" id="flightsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="tab-combo" data-bs-toggle="tab" data-bs-target="#pane-combo" type="button" role="tab" aria-controls="pane-combo" aria-selected="true">
+                Combinadas (ida + volta)
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-out" data-bs-toggle="tab" data-bs-target="#pane-out" type="button" role="tab" aria-controls="pane-out" aria-selected="false">
+                Somente ida
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="tab-back" data-bs-toggle="tab" data-bs-target="#pane-back" type="button" role="tab" aria-controls="pane-back" aria-selected="false">
+                Somente volta
+              </button>
+            </li>
+          </ul>
+
+          <div class="tiny text-white-50 mb-2" id="flightsLegend">
+            <span class="me-3"><i class="fa-solid fa-route me-1"></i>Paradas = conexões</span>
+            <span class="me-3"><i class="fa-regular fa-clock me-1"></i>Duração = total do trecho</span>
+          </div>
+
+          <!-- Conteúdo das abas -->
+          <div class="tab-content" id="flightsTabContent">
+            <!-- COMBINADAS -->
+            <div class="tab-pane fade show active" id="pane-combo" role="tabpanel" aria-labelledby="tab-combo">
+              <div class="table-responsive">
+                <table class="flights-table align-middle mb-2">
+                  <thead>
+                    <tr>
+                      <th>Trecho</th>
+                      <th>Datas</th>
+                      <th>Companhia</th>
+                      <th>Paradas</th>
+                      <th>Duração</th>
+                      <th>Preço</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="flightsTbodyCombined">
+                    <tr><td colspan="7" class="text-white-50">Buscando combinações de ida + volta…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SOMENTE IDA -->
+            <div class="tab-pane fade" id="pane-out" role="tabpanel" aria-labelledby="tab-out">
+              <div class="table-responsive">
+                <table class="flights-table align-middle mb-2">
+                  <thead>
+                    <tr>
+                      <th>Trecho</th>
+                      <th>Data</th>
+                      <th>Companhia</th>
+                      <th>Paradas</th>
+                      <th>Duração</th>
+                      <th>Preço</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="flightsTbodyOutbound">
+                    <tr><td colspan="7" class="text-white-50">Carregando voos de ida…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SOMENTE VOLTA -->
+            <div class="tab-pane fade" id="pane-back" role="tabpanel" aria-labelledby="tab-back">
+              <div class="table-responsive">
+                <table class="flights-table align-middle mb-2">
+                  <thead>
+                    <tr>
+                      <th>Trecho</th>
+                      <th>Data</th>
+                      <th>Companhia</th>
+                      <th>Paradas</th>
+                      <th>Duração</th>
+                      <th>Preço</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="flightsTbodyReturn">
+                    <tr><td colspan="7" class="text-white-50">Carregando voos de volta…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Estado vazio -->
+          <div id="flightsEmpty" class="tiny text-white-50 d-none">Nenhum voo encontrado para as datas selecionadas.</div>
+
+          <!-- (backcompat) container antigo, mantido oculto -->
+          <div id="flightsContent" class="tiny d-none">As ofertas de voos aparecerão aqui quando o backend retornar resultados.</div>
+        </div>
 
           <!-- skeleton -->
           <div id="skeleton" class="skeleton d-none" aria-hidden="true">

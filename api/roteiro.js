@@ -208,9 +208,28 @@ const AIRPORT_TO_CITY = {
   AKL:'AKL', WLG:'WLG', CHC:'CHC', ZQN:'ZQN'
 };
 
+// city -> airports (inverso)
+const CITY_TO_AIRPORTS = (() => {
+  const m = {};
+  for (const [ap, city] of Object.entries(AIRPORT_TO_CITY)) {
+    if (!m[city]) m[city] = [];
+    m[city].push(ap);
+  }
+  return m;
+})();
+function airportsFor(code) {
+  const up = String(code || '').toUpperCase();
+  return CITY_TO_AIRPORTS[up] || [];
+}
+function addDaysISO(iso, delta) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0,10);
+}
+
 // aliases e destinos → código da cidade (ou aeroporto mais próximo)
 const IATA_HINTS = {
-  // (… conteúdo idêntico ao seu original, mantido para robustez …)
+  // (mesmo bloco do seu código anterior — mantive completo)
   'sao paulo':'SAO','sampa':'SAO','sp':'SAO',
   'rio de janeiro':'RIO','rio':'RIO',
   'brasilia':'BSB',
@@ -457,24 +476,21 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
     return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
   }
 
-  const callApi = async ({ o, d, dep, retAt, page = 1 }) => {
+  const callApi = async ({ o, d, dep, retAt }) => {
     const qs = new URLSearchParams({
       origin: o,
       destination: d,
       departure_at: dep,
       ...(retAt ? { return_at: retAt } : {}),
-      // 🔧 ajustes importantes:
-      one_way: retAt ? 'false' : 'true', // round-trip => one_way=false
-      market: 'br',                      // cache do mercado brasileiro
-      direct: 'false',                   // permitir conexões
-      page: String(page),
+      market: 'br',
       currency: 'BRL',
       sorting: 'price',
       limit: String(limit),
-      unique: 'false'
+      unique: 'false',
+      one_way: retAt ? 'false' : 'true'
     });
     const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
-    log(`[${reqId}] Flights request`, { origin: o, destination: d, departure_at: dep, return_at: retAt || null, url });
+    log(`[${reqId}] Flights request`, { origin: o, destination: d, depart: dep, return_at: retAt || null, url });
 
     console.time(`[${reqId}] flights_api ${o}->${d} ${dep}${retAt ? ' + ' + retAt : ''}`);
     const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
@@ -501,30 +517,72 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
     }));
   };
 
-  // Se intervalo > 30 dias ou force fallback → consulta one-way (ida + volta separadas)
-  const tooLong = (ret && depart) ? daysBetween(depart, ret) > 30 : false;
-  if (_forceFallback || !ret || !depart || tooLong) {
-    log(`[${reqId}] usando fallback one-way (ret=${ret}, depart=${depart}, tooLong=${tooLong}, force=${_forceFallback})`);
-
-    const out = await callApi({ o: origin, d: destination, dep: depart, retAt: null });
-    if (!out.ok) {
-      logError(`[${reqId}] one-way OUT error`, out.status, safeTruncate(out.data?._raw || JSON.stringify(out.data)));
-    } else {
-      log(`[${reqId}] one-way OUT ok`, { count: Array.isArray(out.data?.data) ? out.data.data.length : 0 });
+  const dedupe = (arr) => {
+    const seen = new Set();
+    const out = [];
+    for (const it of arr || []) {
+      const k = [it.origin || it.from, it.destination || it.to, it.depart_date || it.depart, Math.round(+it.price||0)].join('|');
+      if (!seen.has(k)) { seen.add(k); out.push(it); }
     }
+    return out;
+  };
 
-    let back = null;
-    if (ret) {
-      back = await callApi({ o: destination, d: origin, dep: ret, retAt: null });
-      if (!back.ok) {
-        logError(`[${reqId}] one-way BACK error`, back.status, safeTruncate(back.data?._raw || JSON.stringify(back.data)));
-      } else {
-        log(`[${reqId}] one-way BACK ok`, { count: Array.isArray(back.data?.data) ? back.data.data.length : 0 });
+  const tryOneWayVariants = async (oCity, dCity, date) => {
+    const oAps = airportsFor(oCity);
+    const dAps = airportsFor(dCity);
+    const attempts = [];
+
+    // 1) city -> city
+    attempts.push({ o: oCity, d: dCity, dep: date });
+
+    // 2) city -> each dest airport
+    dAps.forEach(d => attempts.push({ o: oCity, d, dep: date }));
+
+    // 3) each origin airport -> city
+    oAps.forEach(o => attempts.push({ o, d: dCity, dep: date }));
+
+    // 4) airport -> airport
+    for (const o of oAps) for (const d of dAps) attempts.push({ o, d, dep: date });
+
+    const collect = [];
+    for (const a of attempts.slice(0, 12)) { // limite de chamadas
+      const r = await callApi({ o: a.o, d: a.d, dep: a.dep, retAt: null });
+      if (r.ok && Array.isArray(r.data?.data) && r.data.data.length) {
+        collect.push(...r.data.data);
+        if (collect.length >= limit) break;
       }
     }
 
-    const items_outbound = out.ok ? mapItems(out.data?.data, { o: origin, d: destination, dep: depart, retAt: null }) : [];
-    const items_return  = (back && back.ok) ? mapItems(back.data?.data, { o: destination, d: origin, dep: ret, retAt: null }) : [];
+    // flex de data se ainda vazio
+    if (!collect.length) {
+      for (const flex of [-1, +1]) {
+        const dep2 = addDaysISO(date, flex);
+        const r2 = await callApi({ o: oCity, d: dCity, dep: dep2, retAt: null });
+        if (r2.ok && Array.isArray(r2.data?.data) && r2.data.data.length) {
+          collect.push(...r2.data.data);
+          break;
+        }
+      }
+    }
+    return dedupe(collect);
+  };
+
+  const tooLong = (ret && depart) ? daysBetween(depart, ret) > 30 : false;
+
+  // One-way (fallback) se >30d, sem datas completas ou RT vazio/forçado
+  if (_forceFallback || !ret || !depart || tooLong) {
+    log(`[${reqId}] usando fallback one-way (ret=${ret}, depart=${depart}, tooLong=${tooLong}, force=${_forceFallback})`);
+
+    // IDA
+    const outVariants = await tryOneWayVariants(origin, destination, depart);
+    const items_outbound = mapItems(outVariants, { o: origin, d: destination, dep: depart, retAt: null });
+
+    // VOLTA
+    let items_return = [];
+    if (ret) {
+      const backVariants = await tryOneWayVariants(destination, origin, ret);
+      items_return = mapItems(backVariants, { o: destination, d: origin, dep: ret, retAt: null });
+    }
 
     // Combina top 3 x 3 como sugestão de ida+volta
     const combined = [];
@@ -549,14 +607,14 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
 
     return {
       provider: 'Travelpayouts',
-      note: 'Resultados a partir do cache do mercado BR. Viagem >30 dias ou round-trip vazio: exibindo ida e volta separadas (fallback).',
+      note: 'Round-trip vazio ou >30d: usando rota expandida (city/airports) e flex de data ±1 para ida/volta.',
       items_combined: combined.slice(0, limit),
       items_outbound,
       items_return
     };
   }
 
-  // Round-trip normal (≤ 30 dias)
+  // Round-trip normal
   const rt = await callApi({ o: origin, d: destination, dep: depart, retAt: ret });
 
   if (!rt.ok) {
@@ -570,14 +628,13 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
   }
 
   const arr = Array.isArray(rt.data?.data) ? rt.data.data : [];
-  // 🔁 Se a busca RT vier vazia (cache sem hits), acionamos o fallback one-way
   if (arr.length === 0) {
     log(`[${reqId}] round-trip vazio — fallback one-way`);
     return await searchFlightsAviasales({ origin, destination, depart, ret, limit, reqId, _forceFallback: true });
   }
 
   const items = mapItems(arr, { o: origin, d: destination, dep: depart, retAt: ret });
-  log(`[${reqId}] Flights OK`, { count: items.length, sample: items[0] || null });
+  log(`[${reqId}] Flights RT OK`, { count: items.length });
 
   return {
     items,
@@ -676,7 +733,7 @@ export default async function handler(req, res) {
     if (!destinoEntrada) return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").', reqId });
     if (!Number.isFinite(dias) || dias <= 0) return res.status(400).json({ error: 'O campo "dias" deve ser um número > 0.', reqId });
 
-    /* ---------- 1) Normalizar destino + moeda (Chat Completions JSON) ---------- */
+    /* ---------- 1) Normalizar destino + moeda ---------- */
     const classifyMsg = [
       { role: 'system', content:
 `Você extrai metadados geográficos e de moeda. Responda SOMENTE com JSON válido.
@@ -725,7 +782,7 @@ Campos:
     })();
     log(`[${reqId}] meta`, meta);
 
-    /* ---------- 2) Câmbio (com fallbacks) ---------- */
+    /* ---------- 2) Câmbio ---------- */
     const fxFetch = await getFxBRLto(meta.currency_code, reqId);
     let fx = {
       base: 'BRL',
@@ -746,7 +803,7 @@ Campos:
       return partes.join(' ');
     })();
 
-    /* ---------- 3) Prompt principal (1–7) ---------- */
+    /* ---------- 3) Prompt principal ---------- */
     const destinoLabel =
       (meta.normalized_name && meta.country_name && meta.country_name !== meta.normalized_name)
         ? `${meta.normalized_name}, ${meta.country_name}`
@@ -874,9 +931,8 @@ Contexto:
 - País: ${meta.country_name || '(não identificado)'}
 `;
 
-    /* ---------- 4) Geração com Responses API + web_search (fallbacks) ---------- */
+    /* ---------- 4) Geração com Responses API + web_search ---------- */
     async function generateHtmlWithSearch(inputText) {
-      // tentativa A — Responses API com web_search
       try {
         console.time(`[${reqId}] openai_responses_search`);
         const resp = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
@@ -904,7 +960,7 @@ Contexto:
         logError(`[${reqId}] responses+search exception`, String(e));
       }
 
-      // tentativa B — Responses sem web_search
+      // Sem web_search
       try {
         console.time(`[${reqId}] openai_responses_plain`);
         const respNoSearch = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
@@ -927,7 +983,7 @@ Contexto:
         logError(`[${reqId}] responses(no-search) exception`, String(e));
       }
 
-      // tentativa C — Chat Completions
+      // Chat fallback
       console.time(`[${reqId}] openai_chat_fallback`);
       const cc = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
         method: 'POST',
@@ -1002,15 +1058,13 @@ Contexto:
         ? `${meta.normalized_name}, ${meta.country_name}`
         : (meta.normalized_name || destinoEntrada);
 
-    /* ---------- 5.1) Passagens aéreas (com fallback + IATA robusto) ---------- */
+    /* ---------- 5.1) Passagens aéreas ---------- */
     let flights = null;
     try {
       if (dataIda && dataVolta && origemEntrada) {
-        // origem — tenta IATA direto, depois converte para "city code" se aplicável
         const originRaw = await resolveIataTerm(origemEntrada);
         const originIata = originRaw ? preferCityCode(originRaw) : null;
 
-        // destino — tenta várias combinações (ex.: "Maragogi" → MCZ via hints)
         const tryTerms = [
           destinoEntrada,
           meta.normalized_name,
@@ -1072,7 +1126,6 @@ Contexto:
           provider: fx.provider
         }
       },
-      // Flights (para o front)
       flights: flights || undefined,
       passagens: flights || undefined, // alias
       render_as: 'html',
