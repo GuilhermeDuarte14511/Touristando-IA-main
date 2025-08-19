@@ -41,7 +41,7 @@
     a, a:hover, a:focus { color:#fff; text-decoration: underline dotted; }
     .text-secondary, .text-muted, .text-body-secondary,
     .form-text, .link-secondary, .text-white-50,
-    .small, small, .tiny, .badge, label, .nav-link { color:#fff !important; }
+    .small, small, .badge, label, .nav-link { color:#fff !important; }
 
     /* markdown legacy */
     .md-out{ color:#fff }
@@ -394,6 +394,7 @@
               <i class="fa-solid fa-plane-up text-info"></i>
               <strong>Passagens aéreas</strong>
               <span class="tiny text-white-50">(beta)</span>
+              <span id="flightNote" class="tiny ms-2 text-white-50"></span>
             </div>
             <div id="flightsContent" class="tiny">As ofertas de voos aparecerão aqui quando o backend retornar resultados.</div>
           </div>
@@ -472,7 +473,7 @@
     const $sk = $('#skeleton'), $progBox = $('#progressBox'), $res = $('#result'), $resRaw = $('#resultRaw');
     const $btnCopy = $('#btnCopy'), $btnCopyHTML = $('#btnCopyHTML'), $btnDownload = $('#btnDownload'), $btnPdf = $('#btnPdf'), $btnToggleRaw = $('#btnToggleRaw'), $btnZoom = $('#btnZoom');
     const $metaChips = $('#metaChips');
-    const $flightsBox = $('#flightsBox'), $flightsContent = $('#flightsContent');
+    const $flightsBox = $('#flightsBox'), $flightsContent = $('#flightsContent'), $flightNote = $('#flightNote');
     const toast = new bootstrap.Toast(document.getElementById('toast'), { delay: 2000 });
 
     const $destino = $('#destino'),
@@ -506,6 +507,27 @@
         const ms = d2 - d1; if(!isFinite(ms)) return null;
         return Math.floor(ms / (1000*60*60*24)) + 1; // dias inclusivos
       }catch{ return null; }
+    };
+    const parsePriceBRL = (s) => {
+      if (!s) return null;
+      const m = String(s).replace(/\s/g,'').match(/(\d+(?:\.\d{3})*(?:,\d+)?)/);
+      if (!m) return null;
+      const n = m[1].replace(/\./g,'').replace(',','.');
+      const v = parseFloat(n);
+      return Number.isFinite(v) ? v : null;
+    };
+    const fmtLocal = (v, code) => {
+      try { return new Intl.NumberFormat('pt-BR', { style:'currency', currency: code }).format(v); }
+      catch { return `${code} ${v.toLocaleString('pt-BR',{maximumFractionDigits:0})}`; }
+    };
+    const showBRLAndLocal = (priceBRL, meta) => {
+      if (!Number.isFinite(priceBRL)) return '-';
+      const base = `R$ ${Math.round(priceBRL).toLocaleString('pt-BR')}`;
+      const fx = meta?.fx;
+      const code = meta?.currency_code || '';
+      if (!fx || !fx.brl_to_local || !code || code === 'BRL') return base;
+      const local = priceBRL * Number(fx.brl_to_local);
+      return `${base} (~${fmtLocal(local, code)})`;
     };
 
     function updateSummary() {
@@ -709,50 +731,128 @@
       }catch{}
     })();
 
-    // ====== Flights box renderer ======
+    // ====== Flights box renderer (com fallback) ======
+    function flightsTable(rows){
+      return `
+        <div class="table-responsive">
+          <table class="table table-sm table-borderless align-middle mb-2">
+            <thead class="tiny">
+              <tr>
+                <th class="text-white-50">Trecho</th>
+                <th class="text-white-50">Datas</th>
+                <th class="text-white-50">Companhia</th>
+                <th class="text-white-50">Paradas</th>
+                <th class="text-white-50">Duração</th>
+                <th class="text-white-50">Preço</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+
     function renderFlights(data){
       $flightsContent.empty();
-      let html = '';
-      const f = data?.flights || data?.passagens || {};
-      if (typeof f?.html === 'string' && f.html.trim()){
-        html = f.html.trim();
-      } else if (Array.isArray(f?.items) && f.items.length){
-        html = `
-          <div class="table-responsive">
-            <table class="table table-sm table-borderless align-middle mb-0">
-              <thead class="tiny">
-                <tr>
-                  <th class="text-white-50">Trecho</th>
-                  <th class="text-white-50">Datas</th>
-                  <th class="text-white-50">Companhia</th>
-                  <th class="text-white-50">Paradas</th>
-                  <th class="text-white-50">Duração</th>
-                  <th class="text-white-50">Preço</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${f.items.slice(0,6).map(v=>`
-                  <tr>
-                    <td>${(v.from || '')} → ${(v.to || '')}</td>
-                    <td>${fmtDateBR(v.depart || '')}${v.return ? ' · '+fmtDateBR(v.return) : ''}</td>
-                    <td>${v.airline || '-'}</td>
-                    <td>${(v.stops ?? 0)}x</td>
-                    <td>${v.duration || '-'}</td>
-                    <td>${v.price ? v.price : '-' } ${v.currency || ''}</td>
-                    <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>`;
-      }
-      if (html){
-        $flightsContent.html(html);
+      $flightNote.text('');
+      const f = data?.flights || data?.passagens || null;
+      console.log('[front][flights] payload:', f, 'reqId:', data?.reqId);
+
+      if (!f) { $flightsBox.addClass('d-none'); return; }
+
+      // erro explícito
+      if (f.error) {
+        $flightsContent.html(`<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>${f.error}</div>`);
         $flightsBox.removeClass('d-none');
-      } else {
-        $flightsBox.addClass('d-none');
+        return;
       }
+
+      const meta = data?.meta || {};
+      let html = '';
+
+      // 1) Round-trip normal
+      if (Array.isArray(f.items) && f.items.length){
+        const rows = f.items.slice(0,6).map(v=>{
+          const brl = parsePriceBRL(v.price);
+          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
+          return `
+            <tr>
+              <td>${(v.from || '')} → ${(v.to || '')}</td>
+              <td>${fmtDateBR(v.depart || '')}${v.return ? ' · '+fmtDateBR(v.return) : ''}</td>
+              <td>${v.airline || '-'}</td>
+              <td>${(v.stops ?? 0)}x</td>
+              <td>${v.duration || '-'}</td>
+              <td>${priceOut}</td>
+              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
+            </tr>`;
+        }).join('');
+        html += flightsTable(rows);
+      }
+
+      // 2) Fallback >30d — combos + ida + volta
+      if (Array.isArray(f.items_combined) && f.items_combined.length){
+        $flightNote.text(f.note || 'Resultados em ida/volta separados (limite de 30 dias da API).');
+
+        // Combos
+        const rowsCombo = f.items_combined.slice(0,6).map(v=>{
+          const brl = Number(v.price_number);
+          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
+          return `
+            <tr>
+              <td>${v.from} → ${v.to}</td>
+              <td>${fmtDateBR(v.depart)} · ${fmtDateBR(v.return)}</td>
+              <td>${v.airline || '-'}</td>
+              <td>${(v.stops ?? 0)}x</td>
+              <td>${v.duration || '-'}</td>
+              <td>${priceOut}</td>
+              <td></td>
+            </tr>`;
+        }).join('');
+        html += `<h6 class="mt-2">Sugestões (ida + volta combinadas)</h6>${flightsTable(rowsCombo)}`;
+      }
+
+      if (Array.isArray(f.items_outbound) && f.items_outbound.length){
+        const rowsOut = f.items_outbound.slice(0,6).map(v=>{
+          const brl = Number(v.price_number ?? parsePriceBRL(v.price));
+          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
+          return `
+            <tr>
+              <td>${(v.from || '')} → ${(v.to || '')}</td>
+              <td>${fmtDateBR(v.depart || '')}</td>
+              <td>${v.airline || '-'}</td>
+              <td>${(v.stops ?? 0)}x</td>
+              <td>${v.duration || '-'}</td>
+              <td>${priceOut}</td>
+              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
+            </tr>`;
+        }).join('');
+        html += `<h6 class="mt-2">Somente ida</h6>${flightsTable(rowsOut)}`;
+      }
+
+      if (Array.isArray(f.items_return) && f.items_return.length){
+        const rowsRt = f.items_return.slice(0,6).map(v=>{
+          const brl = Number(v.price_number ?? parsePriceBRL(v.price));
+          const priceOut = Number.isFinite(brl) ? showBRLAndLocal(brl, meta) : (v.price || '-');
+          return `
+            <tr>
+              <td>${(v.from || '')} → ${(v.to || '')}</td>
+              <td>${fmtDateBR(v.depart || '')}</td>
+              <td>${v.airline || '-'}</td>
+              <td>${(v.stops ?? 0)}x</td>
+              <td>${v.duration || '-'}</td>
+              <td>${priceOut}</td>
+              <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
+            </tr>`;
+        }).join('');
+        html += `<h6 class="mt-2">Somente volta</h6>${flightsTable(rowsRt)}`;
+      }
+
+      if (!html){
+        html = `<div class="alert alert-warning tiny mb-0"><i class="fa-regular fa-circle-xmark me-1"></i>Nenhuma oferta encontrada para os parâmetros informados.</div>`;
+      }
+
+      $flightsContent.html(html);
+      $flightsBox.removeClass('d-none');
     }
 
     // ====== generate ======
@@ -779,6 +879,7 @@
       try{
         const resp = await fetch('/api/roteiro', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         const data = await resp.json();
+        console.log('[front] /api/roteiro response:', { status: resp.status, reqId: data?.reqId, meta: data?.meta, flights: data?.flights });
         if(!resp.ok) throw new Error(data?.error || 'Falha ao gerar roteiro');
 
         // Meta chips
@@ -803,6 +904,7 @@
         if(meta.fx && meta.fx.date){ $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${meta.fx.date}`)); }
         if(meta.orcamento_por_pessoa){ $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`)); }
         if(meta.orcamento){ $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(meta.orcamento).toLocaleString('pt-BR')}`)); }
+        if(data.reqId){ $metaChips.append(mkChip('fa-solid fa-hashtag', `reqId: ${data.reqId}`)); }
 
         // ===== Renderização do conteúdo =====
         const raw = (data.texto || '').trim();

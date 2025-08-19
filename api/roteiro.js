@@ -14,7 +14,7 @@ const DEBUG = env('DEBUG_ROTEIRO') === '1' || (env('DEBUG') || '').toLowerCase()
 
 const log = (...args) => { if (DEBUG) console.log('[roteiro]', ...args); };
 const logError = (...args) => console.error('[roteiro]', ...args);
-const safeTruncate = (s, n = 400) => (typeof s === 'string' && s.length > n ? s.slice(0, n) + '…' : s);
+const safeTruncate = (s, n = 600) => (typeof s === 'string' && s.length > n ? s.slice(0, n) + '…' : s);
 const maskEmail = (e='') => e.replace(/(^.).*(@.*$)/, (_, a, b) => `${a}***${b}`);
 
 function newReqId() {
@@ -110,7 +110,6 @@ function extractResponsesText(obj) {
       return pieces.join('\n');
     }
   } catch { /* ignore */ }
-  // fallback p/ Chat Completions
   return obj?.choices?.[0]?.message?.content || '';
 }
 
@@ -136,15 +135,12 @@ function looksLikeIata(s='') {
 
 async function resolveIataTerm(term) {
   if (!term) return null;
-  // 1) se já veio IATA
   const direct = looksLikeIata(term);
   if (direct) return direct;
 
-  // 2) dicionário simples (cidades populares)
   const hint = IATA_HINTS[term.trim().toLowerCase()];
   if (hint) return hint;
 
-  // 3) Autocomplete Travelpayouts (gratuito)
   try {
     const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(term)}&locale=pt&types[]=city&types[]=airport`;
     log('IATA autocomplete →', { term, url: url.replace(/term=[^&]+/, 'term=***') });
@@ -174,56 +170,56 @@ function joinDuration(d1, d2){
   return [a,b].filter(Boolean).join(' / ') || null;
 }
 
-/* ----------------------- Flights (Travelpayouts/Aviasales) ----------------------- */
-
-async function searchFlightsAviasales({ origin, destination, depart, ret, limit = 6, reqId }) {
-  const token = env('TRAVELPAYOUTS_TOKEN');
-  if (!token) {
-    log('TRAVELPAYOUTS_TOKEN ausente — pulando busca de passagens');
-    return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
+/* ----------------------- FX helpers (com fallbacks) ----------------------- */
+async function getFxBRLto(code, reqId) {
+  const target = (code || '').toUpperCase();
+  if (!target || target === 'BRL') {
+    return { rate: 1, inverse: 1, date: fmtDate(new Date()), provider: 'none' };
   }
 
-  const qs = new URLSearchParams({
-    origin, destination,
-    departure_at: depart, // YYYY-MM-DD
-    return_at: ret,       // YYYY-MM-DD
-    currency: 'BRL',
-    sorting: 'price',
-    limit: String(limit),
-    unique: 'false'
-  });
-  const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
-  log(`[${reqId}] Flights request`, { origin, destination, depart, ret, url });
+  // A) exchangerate.host
+  try {
+    console.time(`[${reqId}] fx_exchangerate_host`);
+    const r = await fetchWithTimeout(
+      `https://api.exchangerate.host/latest?base=BRL&symbols=${encodeURIComponent(target)}`,
+      {}, 15000
+    );
+    const j = await safeJson(r);
+    console.timeEnd(`[${reqId}] fx_exchangerate_host`);
+    const rate = j?.rates?.[target];
+    if (Number.isFinite(rate) && rate > 0) {
+      return { rate, inverse: 1 / rate, date: j?.date ? fmtDate(new Date(j.date+'T00:00:00Z')) : fmtDate(new Date()), provider: 'exchangerate.host' };
+    }
+  } catch (e) { log(`[${reqId}] fx host err`, String(e)); }
 
-  console.time(`[${reqId}] flights_api`);
-  const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
-  const j = await safeJson(r);
-  console.timeEnd(`[${reqId}] flights_api`);
+  // B) frankfurter.app
+  try {
+    console.time(`[${reqId}] fx_frankfurter`);
+    const r2 = await fetchWithTimeout(
+      `https://api.frankfurter.app/latest?from=BRL&to=${encodeURIComponent(target)}`,
+      {}, 15000
+    );
+    const j2 = await safeJson(r2);
+    console.timeEnd(`[${reqId}] fx_frankfurter`);
+    const rate2 = j2?.rates?.[target];
+    if (Number.isFinite(rate2) && rate2 > 0) {
+      return { rate: rate2, inverse: 1 / rate2, date: j2?.date ? fmtDate(new Date(j2.date+'T00:00:00Z')) : fmtDate(new Date()), provider: 'frankfurter.app' };
+    }
+  } catch (e) { log(`[${reqId}] fx frankfurter err`, String(e)); }
 
-  if (!r.ok) {
-    logError(`[${reqId}] Flights error status`, r.status, 'body:', safeTruncate(j?._raw || JSON.stringify(j)));
-    return { error: j?.message || j?._raw || 'Erro na API Travelpayouts', _raw: j, status: r.status };
-  }
+  // C) open.er-api.com
+  try {
+    console.time(`[${reqId}] fx_open_er_api`);
+    const r3 = await fetchWithTimeout(`https://open.er-api.com/v6/latest/BRL`, {}, 15000);
+    const j3 = await safeJson(r3);
+    console.timeEnd(`[${reqId}] fx_open_er_api`);
+    const rate3 = j3?.rates?.[target];
+    if (Number.isFinite(rate3) && rate3 > 0) {
+      return { rate: rate3, inverse: 1 / rate3, date: j3?.time_last_update_utc ? fmtDate(new Date(j3.time_last_update_utc)) : fmtDate(new Date()), provider: 'open.er-api.com' };
+    }
+  } catch (e) { log(`[${reqId}] fx open-er err`, String(e)); }
 
-  const items = Array.isArray(j?.data) ? j.data : [];
-  log(`[${reqId}] Flights OK`, { count: items.length, sample: items[0] ? {
-    from: items[0].origin, to: items[0].destination, price: items[0].price, link: items[0].link
-  } : null });
-
-  const mapped = items.slice(0, limit).map(x => ({
-    from: x.origin || origin,
-    to: x.destination || destination,
-    depart: x.depart_date || x.departure_at || depart,
-    return: x.return_date || ret,
-    airline: x.airline || null,
-    stops: (typeof x.transfers === 'number') ? x.transfers : (x.stops ?? null),
-    duration: joinDuration(x.duration_to, x.duration_back),
-    price: x.price ? `R$ ${Math.round(x.price).toLocaleString('pt-BR')}` : null,
-    currency: 'BRL',
-    deep_link: x.link || null
-  }));
-
-  return { items: mapped, provider: 'Travelpayouts', _raw: j };
+  return { rate: 0, inverse: 0, date: fmtDate(new Date()), provider: 'unavailable' };
 }
 
 /* ----------------------- helpers de moeda extra ----------------------- */
@@ -243,6 +239,136 @@ function pairBRLWithLocal(brlValue, quoteCode, brlToQuote) {
   }
   const local = brlValue * brlToQuote;
   return `${fmtMoneyBRL(brlValue)} (~${fmtMoneyGeneric(local, quoteCode)})`;
+}
+
+/* ----------------------- Flights (Travelpayouts/Aviasales) ----------------------- */
+
+function daysBetween(a, b) {
+  try {
+    const d1 = new Date(a + 'T00:00:00Z');
+    const d2 = new Date(b + 'T00:00:00Z');
+    return Math.round((d2 - d1) / 86400000);
+  } catch { return 0; }
+}
+
+async function searchFlightsAviasales({ origin, destination, depart, ret, limit = 6, reqId, _forceFallback = false }) {
+  const token = env('TRAVELPAYOUTS_TOKEN');
+  if (!token) {
+    log('TRAVELPAYOUTS_TOKEN ausente — pulando busca de passagens');
+    return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
+  }
+
+  const callApi = async ({ o, d, dep, retAt }) => {
+    const qs = new URLSearchParams({
+      origin: o,
+      destination: d,
+      departure_at: dep,
+      ...(retAt ? { return_at: retAt } : {}),
+      currency: 'BRL',
+      sorting: 'price',
+      limit: String(limit),
+      unique: 'false'
+    });
+    const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
+    log(`[${reqId}] Flights request`, { origin: o, destination: d, depart: dep, return_at: retAt || null, url });
+
+    console.time(`[${reqId}] flights_api ${o}->${d} ${dep}${retAt ? ' + ' + retAt : ''}`);
+    const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
+    const j = await safeJson(r);
+    console.timeEnd(`[${reqId}] flights_api ${o}->${d} ${dep}${retAt ? ' + ' + retAt : ''}`);
+
+    return { ok: r.ok, status: r.status, data: j, url };
+  };
+
+  const mapItems = (items, { o, d, dep, retAt }) => {
+    const arr = Array.isArray(items) ? items : [];
+    return arr.slice(0, limit).map(x => ({
+      from: x.origin || o,
+      to: x.destination || d,
+      depart: x.depart_date || x.departure_at || dep,
+      return: retAt ? (x.return_date || retAt) : null,
+      airline: x.airline || null,
+      stops: (typeof x.transfers === 'number') ? x.transfers : (x.stops ?? null),
+      duration: joinDuration(x.duration_to, x.duration_back),
+      price_number: Number.isFinite(+x.price) ? +x.price : null,
+      price: x.price ? `R$ ${Math.round(x.price).toLocaleString('pt-BR')}` : null,
+      currency: 'BRL',
+      deep_link: x.link || null
+    }));
+  };
+
+  // Se intervalo > 30 dias ou force fallback → consulta one-way (ida + volta separadas)
+  const tooLong = (ret && depart) ? daysBetween(depart, ret) > 30 : false;
+  if (_forceFallback || !ret || !depart || tooLong) {
+    log(`[${reqId}] usando fallback one-way (ret=${ret}, depart=${depart}, tooLong=${tooLong}, force=${_forceFallback})`);
+
+    const out = await callApi({ o: origin, d: destination, dep: depart, retAt: null });
+    if (!out.ok) {
+      logError(`[${reqId}] one-way OUT error`, out.status, safeTruncate(out.data?._raw || JSON.stringify(out.data)));
+    } else {
+      log(`[${reqId}] one-way OUT ok`, { count: Array.isArray(out.data?.data) ? out.data.data.length : 0 });
+    }
+
+    let back = null;
+    if (ret) {
+      back = await callApi({ o: destination, d: origin, dep: ret, retAt: null });
+      if (!back.ok) {
+        logError(`[${reqId}] one-way BACK error`, back.status, safeTruncate(back.data?._raw || JSON.stringify(back.data)));
+      } else {
+        log(`[${reqId}] one-way BACK ok`, { count: Array.isArray(back.data?.data) ? back.data.data.length : 0 });
+      }
+    }
+
+    const items_outbound = out.ok ? mapItems(out.data?.data, { o: origin, d: destination, dep: depart, retAt: null }) : [];
+    const items_return  = (back && back.ok) ? mapItems(back.data?.data, { o: destination, d: origin, dep: ret, retAt: null }) : [];
+
+    // Combina top 3 x 3 como sugestão de ida+volta
+    const combined = [];
+    for (const a of items_outbound.slice(0, 3)) {
+      for (const b of items_return.slice(0, 3)) {
+        const tot = (a.price_number || 0) + (b.price_number || 0);
+        combined.push({
+          from: a.from, to: a.to,
+          depart: a.depart, return: b.depart,
+          airline: a.airline || b.airline || null,
+          stops: (a.stops ?? 0) + (b.stops ?? 0),
+          duration: [a.duration, b.duration].filter(Boolean).join(' / '),
+          price_number: tot,
+          price: `R$ ${Math.round(tot).toLocaleString('pt-BR')}`,
+          currency: 'BRL',
+          deep_link: null,
+          _combo: { outbound: a, back: b }
+        });
+      }
+    }
+    combined.sort((x, y) => (x.price_number ?? 1e12) - (y.price_number ?? 1e12));
+
+    return {
+      provider: 'Travelpayouts',
+      note: 'Viagem >30 dias ou sem volta: resultados de ida e volta listados separadamente. (Limite da API)',
+      items_combined: combined.slice(0, limit),
+      items_outbound,
+      items_return
+    };
+  }
+
+  // Round-trip normal (≤ 30 dias)
+  const rt = await callApi({ o: origin, d: destination, dep: depart, retAt: ret });
+
+  if (!rt.ok) {
+    const msg = (rt.data?._raw || rt.data?.error || '').toString().toLowerCase();
+    if (msg.includes('exceeds supported maximum of 30')) {
+      log(`[${reqId}] round-trip 400 >30d detectado — fallback`);
+      return await searchFlightsAviasales({ origin, destination, depart, ret, limit, reqId, _forceFallback: true });
+    }
+    logError(`[${reqId}] Flights error status`, rt.status, safeTruncate(rt.data?._raw || JSON.stringify(rt.data)));
+    return { error: rt.data?.message || rt.data?._raw || 'Erro na API Travelpayouts', _raw: rt.data, status: rt.status };
+  }
+
+  const items = mapItems(rt.data?.data, { o: origin, d: destination, dep: depart, retAt: ret });
+  log(`[${reqId}] Flights OK`, { count: items.length, sample: items[0] || null });
+
+  return { items, provider: 'Travelpayouts', _raw: rt.data };
 }
 
 /* ----------------------- handler ----------------------- */
@@ -296,7 +422,7 @@ export default async function handler(req, res) {
       body.estado?.toString().trim() ||
       body.cidade?.toString().trim();
 
-    // 🆕 datas + origem (para passagens)
+    // datas + origem (para passagens)
     const dataIda = (body.data_ida || '').toString().slice(0,10);
     const dataVolta = (body.data_volta || '').toString().slice(0,10);
     const origemEntrada = (body.origem || '').toString().trim() || null;
@@ -383,35 +509,16 @@ Campos:
     })();
     log(`[${reqId}] meta`, meta);
 
-    /* ---------- 2) Câmbio ---------- */
+    /* ---------- 2) Câmbio (com fallbacks) ---------- */
+    const fxFetch = await getFxBRLto(meta.currency_code, reqId);
     let fx = {
       base: 'BRL',
       quote: meta.currency_code || 'USD',
-      brl_to_quote: 0,
-      quote_to_brl: 0,
-      date: fmtDate(new Date())
+      brl_to_quote: fxFetch.rate || 0,
+      quote_to_brl: fxFetch.inverse || 0,
+      date: fxFetch.date,
+      provider: fxFetch.provider
     };
-
-    try {
-      if ((meta.currency_code || 'BRL').toUpperCase() === 'BRL') {
-        fx.brl_to_quote = 1;
-        fx.quote_to_brl = 1;
-      } else {
-        console.time(`[${reqId}] fx_fetch`);
-        const r = await fetchWithTimeout(
-          `https://api.exchangerate.host/latest?base=BRL&symbols=${encodeURIComponent(meta.currency_code)}`,
-          {}, 15000
-        );
-        const j = await safeJson(r);
-        console.timeEnd(`[${reqId}] fx_fetch`);
-        const rate = j?.rates?.[meta.currency_code] || 0;
-        fx.brl_to_quote = rate;
-        fx.quote_to_brl = rate ? (1 / rate) : 0;
-        if (j?.date) fx.date = fmtDate(new Date(j.date + 'T00:00:00Z'));
-      }
-    } catch (e) {
-      logError(`[${reqId}] fx error`, String(e));
-    }
     log(`[${reqId}] fx`, fx);
 
     const faixa = (() => {
@@ -655,11 +762,7 @@ Contexto:
     if (orcTotal && orcTotal>0) pushRow('Orçamento total', pairBRLWithLocal(orcTotal, meta.currency_code, fx.brl_to_quote));
     if (orcPerPerson && orcPerPerson>0) pushRow('Orçamento por pessoa', pairBRLWithLocal(orcPerPerson, meta.currency_code, fx.brl_to_quote));
     pushRow('Moeda local', currencyLabel(meta.currency_code, meta.currency_name));
-    pushRow('Taxa utilizada', `(${reqId}) ${ // coloco o reqId aqui pra facilitar achar nos logs
-      (fx.quote !== 'BRL' && fx.brl_to_quote)
-        ? `1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)}) — ${fx.date}`
-        : `1 BRL = 1 BRL (sem conversão)`
-    }`);
+    pushRow('Taxa utilizada', `(${reqId}) ${convHeader} [${fx.provider}]`);
     if (gen.usedSearch) pushRow('Pesquisa na web', 'Ativada (Responses API)');
 
     const section0 = `
@@ -683,7 +786,7 @@ Contexto:
         ? `${meta.normalized_name}, ${meta.country_name}`
         : (meta.normalized_name || destinoEntrada);
 
-    /* ---------- 5.1) Passagens aéreas (beta) ---------- */
+    /* ---------- 5.1) Passagens aéreas (com fallback) ---------- */
     let flights = null;
     try {
       if (dataIda && dataVolta && origemEntrada) {
@@ -733,7 +836,8 @@ Contexto:
         fx: {
           brl_to_local: fx.brl_to_quote,
           local_to_brl: fx.quote_to_brl,
-          date: fx.date
+          date: fx.date,
+          provider: fx.provider
         }
       },
       // Flights (para o front)
@@ -757,9 +861,7 @@ Contexto:
       rows.push(row('Perfil', perfil));
       rows.push(row('Estilo', estilo));
       rows.push(row('Moeda local', currencyLabel(meta.currency_code, meta.currency_name)));
-      rows.push(row('Taxa usada', (fx.quote !== 'BRL' && fx.brl_to_quote)
-        ? `1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)}) — ${fx.date}`
-        : `1 BRL = 1 BRL (sem conversão)`));
+      rows.push(row('Taxa usada', convHeader + ` [${fx.provider}]`));
       if (dataIda) rows.push(row('Ida', dataIda));
       if (dataVolta) rows.push(row('Volta', dataVolta));
       if (origemEntrada) rows.push(row('Origem', origemEntrada));
