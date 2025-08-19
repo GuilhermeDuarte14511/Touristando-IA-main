@@ -101,6 +101,108 @@ function extractResponsesText(obj) {
   return obj?.choices?.[0]?.message?.content || '';
 }
 
+/* ----------------------- IATA helpers ----------------------- */
+
+const IATA_HINTS = {
+  'sao paulo': 'SAO', 'são paulo': 'SAO', 'sp': 'SAO', 'sampa': 'SAO',
+  'rio de janeiro': 'RIO', 'rio': 'RIO',
+  'belo horizonte': 'BHZ',
+  'brasilia': 'BSB', 'brasília': 'BSB',
+  'salvador': 'SSA', 'recife': 'REC', 'fortaleza': 'FOR',
+  'curitiba': 'CWB', 'florianopolis': 'FLN', 'florianópolis': 'FLN',
+  'porto alegre': 'POA', 'campinas': 'CPQ', 'viracopos': 'VCP',
+  'lisboa': 'LIS', 'porto': 'OPO', 'londres': 'LON', 'paris': 'PAR',
+  'roma': 'ROM', 'nova york': 'NYC', 'new york': 'NYC', 'miami': 'MIA',
+  'buenos aires': 'BUE', 'santiago': 'SCL', 'montevideo': 'MVD'
+};
+
+function looksLikeIata(s='') {
+  const m = String(s).toUpperCase().match(/\b([A-Z]{3})\b/);
+  return m ? m[1] : null;
+}
+
+async function resolveIataTerm(term) {
+  if (!term) return null;
+  // 1) se já veio IATA
+  const direct = looksLikeIata(term);
+  if (direct) return direct;
+
+  // 2) dicionário simples (cidades populares)
+  const hint = IATA_HINTS[term.trim().toLowerCase()];
+  if (hint) return hint;
+
+  // 3) Autocomplete Travelpayouts (gratuito)
+  try {
+    const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(term)}&locale=pt&types[]=city&types[]=airport`;
+    const r = await fetchWithTimeout(url, {}, 12000);
+    const data = await safeJson(r);
+    if (Array.isArray(data) && data.length) {
+      // preferir city.code; fallback: airport.city_code ou airport.code
+      const city = data.find(x => x.type === 'city' && x.code);
+      if (city?.code) return String(city.code).toUpperCase();
+      const ap = data.find(x => x.type === 'airport' && (x.city_code || x.code));
+      if (ap?.city_code) return String(ap.city_code).toUpperCase();
+      if (ap?.code) return String(ap.code).toUpperCase();
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function minToHM(m){
+  if (!Number.isFinite(m)) return null;
+  const h = Math.floor(m/60), mm = Math.round(m%60);
+  return `${h}h${mm? ` ${mm}m` : ''}`;
+}
+function joinDuration(d1, d2){
+  const a = Number.isFinite(d1) ? `ida ${minToHM(d1)}` : '';
+  const b = Number.isFinite(d2) ? `volta ${minToHM(d2)}` : '';
+  return [a,b].filter(Boolean).join(' / ') || null;
+}
+
+/* ----------------------- Flights (Travelpayouts/Aviasales) ----------------------- */
+
+async function searchFlightsAviasales({ origin, destination, depart, ret, limit = 6 }) {
+  const token = env('TRAVELPAYOUTS_TOKEN');
+  if (!token) {
+    return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
+  }
+
+  // Endpoint: prices_for_dates — melhor preço para as datas informadas (BRL)
+  const qs = new URLSearchParams({
+    origin, destination,
+    departure_at: depart, // YYYY-MM-DD
+    return_at: ret,       // YYYY-MM-DD
+    currency: 'BRL',
+    sorting: 'price',
+    limit: String(limit),
+    unique: 'false'
+  });
+  const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
+
+  const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
+  const j = await safeJson(r);
+
+  if (!r.ok) {
+    return { error: j?.message || j?._raw || 'Erro na API Travelpayouts', _raw: j };
+  }
+
+  const items = Array.isArray(j?.data) ? j.data : [];
+  const mapped = items.slice(0, limit).map(x => ({
+    from: x.origin || origin,
+    to: x.destination || destination,
+    depart: x.depart_date || x.departure_at || depart,
+    return: x.return_date || ret,
+    airline: x.airline || null,
+    stops: (typeof x.transfers === 'number') ? x.transfers : (x.stops ?? null),
+    duration: joinDuration(x.duration_to, x.duration_back),
+    price: x.price ? `R$ ${Math.round(x.price).toLocaleString('pt-BR')}` : null,
+    currency: 'BRL',
+    deep_link: x.link || null
+  }));
+
+  return { items: mapped, provider: 'Travelpayouts', _raw: j };
+}
+
 /* ----------------------- handler ----------------------- */
 
 export default async function handler(req, res) {
@@ -140,6 +242,11 @@ export default async function handler(req, res) {
       body.pais?.toString().trim() ||
       body.estado?.toString().trim() ||
       body.cidade?.toString().trim();
+
+    // 🆕 datas + origem (para passagens)
+    const dataIda = (body.data_ida || '').toString().slice(0,10);
+    const dataVolta = (body.data_volta || '').toString().slice(0,10);
+    const origemEntrada = (body.origem || '').toString().trim() || null;
 
     const dias = Number(body.dias ?? 5);
     const pessoas = Math.max(1, Number(body.pessoas ?? 1));
@@ -268,7 +375,6 @@ Campos:
     const tableStyle = `style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.98rem"`;
     const thStyle = `style="text-align:left;padding:8px 10px;border:1px solid #2a3358;background:#0e1429;color:#fff"`;
 
-    // >>>> ATENÇÃO: refeições não contam como atração; mínimo de atrações/dia é só de atrações <<<<
     const mainPrompt =
 `Você é um planner de viagens sênior.
 Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown, sem <script> e sem <style>.
@@ -323,15 +429,12 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
          // • dica prática/por que vale a pena;
          // • preço por pessoa quando pago, no formato "R$ 120 (~${meta.currency_code} 21,60)" (se grátis, escrever "Grátis");
          // • <small>Fonte: <a href="...">domínio</a></small>.
-         // Exemplo de <li>:
-         // <li data-type="attraction"><strong>08:30–10:00</strong> — Mirante XYZ (Centro). Vista panorâmica. Preço: R$ 40 (~${meta.currency_code} 7,20). <small>Fonte: ...</small></li>
        </ul>
 
        <h4>Pausas para refeições (não contam como atração)</h4>
        <ul class="meals">
          // Liste 2–3 refeições com data-type="meal": Almoço, Jantar (e opcional Café/Lanche).
          // Cada item deve trazer horário, nome do restaurante/bar, bairro, estilo/cozinha e **ticket médio por pessoa** (BRL + ${meta.currency_code}).
-         // Ex.: <li data-type="meal"><strong>12:30–13:45</strong> — Almoço no Restaurante ABC (Bairro). Cozinha local. Ticket médio: R$ 80 (~${meta.currency_code} 14,40). <small>Fonte: ...</small></li>
        </ul>
 
        <h5>Resumo de custos do dia</h5>
@@ -339,10 +442,7 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
          <thead>
            <tr><th ${thStyle}>Categoria</th><th ${thStyle}>Por pessoa (R$ / ${meta.currency_code})</th><th ${thStyle}>Grupo ${pessoas} (R$ / ${meta.currency_code})</th></tr>
          </thead>
-         <tbody>
-           <!-- Some as estimativas deste dia: Atrações | Alimentação | Transporte local | (opcional) Extras.
-                Informe valores por pessoa e para o grupo (multiplicando por ${pessoas}). -->
-         </tbody>
+         <tbody></tbody>
        </table>
   -->
 </section>
@@ -354,11 +454,10 @@ Inclua uma seção final <section><h2>Fontes consultadas</h2><ul>...</ul></secti
     <thead>
       <tr>
         <th ${thStyle}>Item</th>
-        <!-- gerar cabeçalhos Dia 1..Dia ${dias} -->
         <th ${thStyle}>Subtotal/Dia</th>
       </tr>
     </thead>
-    <tbody><!-- Hospedagem / Alimentação / Transporte / Atrações --></tbody>
+    <tbody></tbody>
   </table>
 
   <h3>Tabela 2 — Quadro-resumo do grupo</h3>
@@ -491,6 +590,31 @@ Contexto:
         ? `${meta.normalized_name}, ${meta.country_name}`
         : (meta.normalized_name || destinoEntrada);
 
+    /* ---------- 5.1) Passagens aéreas (beta) ---------- */
+    let flights = null;
+    try {
+      if (dataIda && dataVolta && origemEntrada) {
+        const originIata = await resolveIataTerm(origemEntrada);
+        const destIata = await resolveIataTerm(destinoEntrada);
+        if (originIata && destIata) {
+          const f = await searchFlightsAviasales({
+            origin: originIata,
+            destination: destIata,
+            depart: dataIda,
+            ret: dataVolta,
+            limit: 6
+          });
+          flights = f;
+        } else {
+          flights = { error: 'Não foi possível resolver IATA de origem ou destino.' };
+        }
+      } else {
+        flights = null; // origem/datas ausentes: não buscar
+      }
+    } catch (e) {
+      flights = { error: 'Falha ao buscar passagens', detail: String(e) };
+    }
+
     const payloadOut = {
       ok: true,
       texto: finalHtmlFragment,
@@ -502,16 +626,22 @@ Contexto:
         currency_name: meta.currency_name || null,
         pessoas,
         dias,
-        orcamento: orcTotal,
-        orcamento_por_pessoa: orcPerPerson,
         estilo,
         perfil,
+        orcamento: orcTotal,
+        orcamento_por_pessoa: orcPerPerson,
+        data_ida: dataIda || null,
+        data_volta: dataVolta || null,
+        origem: origemEntrada || null,
         fx: {
           brl_to_local: fx.brl_to_quote,
           local_to_brl: fx.quote_to_brl,
           date: fx.date
         }
       },
+      // Flights (para o front)
+      flights: flights || undefined,
+      passagens: flights || undefined, // alias
       render_as: 'html'
     };
 
@@ -530,6 +660,9 @@ Contexto:
       rows.push(row('Estilo', estilo));
       rows.push(row('Moeda local', currencyLabel(meta.currency_code, meta.currency_name)));
       rows.push(row('Taxa usada', convHeader));
+      if (dataIda) rows.push(row('Ida', dataIda));
+      if (dataVolta) rows.push(row('Volta', dataVolta));
+      if (origemEntrada) rows.push(row('Origem', origemEntrada));
       if (orcTotal && orcTotal > 0) rows.push(row('Orçamento total', fmtMoneyBRL(orcTotal)));
       if (orcPerPerson && orcPerPerson > 0) rows.push(row('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson)));
       if (gen.usedSearch) rows.push(row('Pesquisa na web', 'Ativada (Responses API)'));

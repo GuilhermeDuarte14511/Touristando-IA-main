@@ -56,11 +56,7 @@
     .trip-plan p{ color:#fff; opacity:.95; margin:.25rem 0 .5rem }
     .trip-plan ul{ padding-left:1.1rem; margin:.25rem 0 .6rem }
     .trip-plan li{ margin:.35rem 0 }
-
-    /* cartões/seções do HTML da IA */
     .trip-plan section{ background:linear-gradient(180deg,#0f1428,#0b1122); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin:12px 0; box-shadow:0 6px 24px rgba(0,0,0,.22) }
-
-    /* tabelas do HTML da IA (caso venham sem inline) */
     .trip-plan table{ width:100%; border-collapse:collapse; margin:8px 0; font-size:.98rem }
     .trip-plan th{ text-align:left; padding:8px 10px; border:1px solid #2a3358; background:#0e1429; color:#fff }
     .trip-plan td{ padding:8px 10px; border:1px solid #2a3358; color:#fff }
@@ -74,7 +70,6 @@
       filter: blur(60px); animation:spin 18s linear infinite; pointer-events:none; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* orbes flutuantes */
     .orbs{ position:absolute; inset:0; pointer-events:none; overflow:hidden; }
     .orb{ position:absolute; width:180px; height:180px; border-radius:50%;
       background: radial-gradient(closest-side, rgba(124,140,255,.25), rgba(124,140,255,0));
@@ -157,7 +152,6 @@
 
     .hidden{ display:none !important; }
 
-    /* Motion reduce */
     @media (prefers-reduced-motion: reduce){
       .animate__animated{ animation: none !important; }
       .progress-bar{ animation: none !important; }
@@ -189,7 +183,7 @@
               Roteiros inteligentes, prontos em segundos
             </h1>
             <p class="lead mb-0">
-              Responda às perguntas passo a passo. No final, a IA gera um plano com custos estimados, roteiro dia a dia e dicas.
+              Responda às perguntas. No final, a IA gera um plano em <b>HTML</b> com custos e, em breve, <b>passagens aéreas</b>.
             </p>
           </div>
         </div>
@@ -209,7 +203,7 @@
         <div class="card p-3 p-md-4">
           <div class="d-flex align-items-center justify-content-between mb-2">
             <div class="step-title"><i class="fa-solid fa-sliders me-2 text-primary"></i>Assistente de Roteiro</div>
-            <div class="tiny"><span id="stepNow">1</span>/<span id="stepTotal">8</span></div>
+            <div class="tiny"><span id="stepNow">1</span>/<span id="stepTotal">9</span></div>
           </div>
 
           <div class="stepper mb-3">
@@ -220,7 +214,8 @@
             <div class="step-dot" data-step="5">5</div><div class="step-line"></div>
             <div class="step-dot" data-step="6">6</div><div class="step-line"></div>
             <div class="step-dot" data-step="7">7</div><div class="step-line"></div>
-            <div class="step-dot" data-step="8">8</div>
+            <div class="step-dot" data-step="8">8</div><div class="step-line"></div>
+            <div class="step-dot" data-step="9">9</div>
           </div>
 
           <div class="progress fake mb-3" aria-hidden="true">
@@ -240,16 +235,43 @@
 
             <!-- STEP 2 -->
             <div class="step hidden" data-step="2">
-              <label class="form-label">Passo 2 — Quantos dias?</label>
-              <div class="input-group">
-                <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-calendar"></i></span>
-                <input id="dias" type="number" class="form-control" value="5" min="1">
+              <label class="form-label">Passo 2 — Datas da viagem & origem</label>
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="input-group">
+                    <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-calendar-plus"></i></span>
+                    <input id="dataIda" type="date" class="form-control" placeholder="Ida">
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="input-group">
+                    <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-calendar-check"></i></span>
+                    <input id="dataVolta" type="date" class="form-control" placeholder="Volta">
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="input-group">
+                    <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-plane-departure"></i></span>
+                    <input id="origem" class="form-control" placeholder="Cidade/Aeroporto de origem (opcional)">
+                  </div>
+                  <div class="form-text tiny">Datas serão usadas para estimar diárias e buscar passagens. Origem é opcional (ex.: São Paulo, GRU).</div>
+                </div>
               </div>
             </div>
 
             <!-- STEP 3 -->
             <div class="step hidden" data-step="3">
-              <label class="form-label">Passo 3 — Quantas pessoas?</label>
+              <label class="form-label">Passo 3 — Quantos dias?</label>
+              <div class="input-group">
+                <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-calendar"></i></span>
+                <input id="dias" type="number" class="form-control" value="5" min="1">
+              </div>
+              <div class="form-text tiny">Se informar ida/volta, calculamos aqui automaticamente.</div>
+            </div>
+
+            <!-- STEP 4 -->
+            <div class="step hidden" data-step="4">
+              <label class="form-label">Passo 4 — Quantas pessoas?</label>
               <div class="input-group">
                 <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-user-group"></i></span>
                 <input id="pessoas" type="number" class="form-control" value="2" min="1">
@@ -257,9 +279,9 @@
               <div class="form-text tiny">Usaremos isso para calcular valores por pessoa e totais.</div>
             </div>
 
-            <!-- STEP 4 -->
-            <div class="step hidden" data-step="4">
-              <label class="form-label">Passo 4 — Orçamento por pessoa (BRL) <span class="tiny">(opcional)</span></label>
+            <!-- STEP 5 -->
+            <div class="step hidden" data-step="5">
+              <label class="form-label">Passo 5 — Orçamento por pessoa (BRL) <span class="tiny">(opcional)</span></label>
               <div class="input-group">
                 <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-wallet"></i></span>
                 <input id="orcamentoPessoa" type="number" class="form-control" placeholder="1500">
@@ -267,9 +289,9 @@
               <div class="form-text tiny">Se preencher aqui e o total estiver vazio, calculamos o total automaticamente.</div>
             </div>
 
-            <!-- STEP 5 -->
-            <div class="step hidden" data-step="5">
-              <label class="form-label">Passo 5 — Orçamento total do grupo (BRL) <span class="tiny">(opcional)</span></label>
+            <!-- STEP 6 -->
+            <div class="step hidden" data-step="6">
+              <label class="form-label">Passo 6 — Orçamento total do grupo (BRL) <span class="tiny">(opcional)</span></label>
               <div class="input-group">
                 <span class="input-group-text bg-transparent text-secondary"><i class="fa-solid fa-coins"></i></span>
                 <input id="orcamento" type="number" class="form-control" placeholder="3500">
@@ -277,9 +299,9 @@
               <div class="form-text tiny">Pode deixar vazio. Se informar o total, estimaremos o valor por pessoa.</div>
             </div>
 
-            <!-- STEP 6 -->
-            <div class="step hidden" data-step="6">
-              <label class="form-label">Passo 6 — Preferências</label>
+            <!-- STEP 7 -->
+            <div class="step hidden" data-step="7">
+              <label class="form-label">Passo 7 — Preferências</label>
               <div class="row g-2">
                 <div class="col-12">
                   <div class="input-group">
@@ -306,9 +328,9 @@
               </div>
             </div>
 
-            <!-- STEP 7 -->
-            <div class="step hidden" data-step="7">
-              <label class="form-label">Passo 7 — Enviar por e-mail <span class="tiny">(opcional)</span></label>
+            <!-- STEP 8 -->
+            <div class="step hidden" data-step="8">
+              <label class="form-label">Passo 8 — Enviar por e-mail <span class="tiny">(opcional)</span></label>
               <div class="input-group">
                 <span class="input-group-text bg-transparent text-secondary"><i class="fa-regular fa-envelope"></i></span>
                 <input id="email" type="email" class="form-control" placeholder="voce@exemplo.com">
@@ -316,9 +338,9 @@
               <div class="form-text tiny">Se o backend (SendGrid) estiver ativo, mandamos o roteiro em HTML.</div>
             </div>
 
-            <!-- STEP 8 -->
-            <div class="step hidden" data-step="8">
-              <label class="form-label">Passo 8 — Revisão &amp; Gerar</label>
+            <!-- STEP 9 -->
+            <div class="step hidden" data-step="9">
+              <label class="form-label">Passo 9 — Revisão &amp; Gerar</label>
               <div class="d-flex flex-wrap gap-2 mb-2" id="reviewTags"></div>
               <div class="tiny">Conferiu tudo? Clique em <b>Gerar roteiro</b> ou pressione <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</div>
             </div>
@@ -365,6 +387,16 @@
 
           <!-- meta chips -->
           <div id="metaChips" class="d-flex flex-wrap gap-2 mb-2"></div>
+
+          <!-- FLIGHTS BOX (beta) -->
+          <div id="flightsBox" class="border rounded-3 p-3 mb-3 d-none" style="border-color: var(--border); background:linear-gradient(180deg,#0f1428,#0b1122);">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="fa-solid fa-plane-up text-info"></i>
+              <strong>Passagens aéreas</strong>
+              <span class="tiny text-white-50">(beta)</span>
+            </div>
+            <div id="flightsContent" class="tiny">As ofertas de voos aparecerão aqui quando o backend retornar resultados.</div>
+          </div>
 
           <!-- skeleton -->
           <div id="skeleton" class="skeleton d-none" aria-hidden="true">
@@ -440,9 +472,13 @@
     const $sk = $('#skeleton'), $progBox = $('#progressBox'), $res = $('#result'), $resRaw = $('#resultRaw');
     const $btnCopy = $('#btnCopy'), $btnCopyHTML = $('#btnCopyHTML'), $btnDownload = $('#btnDownload'), $btnPdf = $('#btnPdf'), $btnToggleRaw = $('#btnToggleRaw'), $btnZoom = $('#btnZoom');
     const $metaChips = $('#metaChips');
+    const $flightsBox = $('#flightsBox'), $flightsContent = $('#flightsContent');
     const toast = new bootstrap.Toast(document.getElementById('toast'), { delay: 2000 });
 
     const $destino = $('#destino'),
+          $dataIda = $('#dataIda'),
+          $dataVolta = $('#dataVolta'),
+          $origem = $('#origem'),
           $dias = $('#dias'),
           $pessoas = $('#pessoas'),
           $orcPessoa = $('#orcamentoPessoa'),
@@ -458,10 +494,26 @@
     // ========= helpers =========
     const mkTag = (icon, text) => $(`<span class="tag"><i class="${icon}"></i> ${text}</span>`);
     const mkChip = (icon, text) => $(`<span class="chip"><i class="${icon}"></i> ${text}</span>`);
+    const fmtDateBR = (s) => {
+      if(!s) return '';
+      const d = new Date(s+'T00:00:00');
+      if (isNaN(d)) return s;
+      return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    };
+    const daysDiff = (a,b) => {
+      try{
+        const d1 = new Date(a+'T00:00:00Z'); const d2 = new Date(b+'T00:00:00Z');
+        const ms = d2 - d1; if(!isFinite(ms)) return null;
+        return Math.floor(ms / (1000*60*60*24)) + 1; // dias inclusivos
+      }catch{ return null; }
+    };
 
     function updateSummary() {
       $liveTags.empty();
       if ($destino.val().trim()) $liveTags.append(mkTag('fa-solid fa-location-dot', $destino.val().trim()));
+      if ($dataIda.val()) $liveTags.append(mkTag('fa-solid fa-plane-departure', `Ida: ${fmtDateBR($dataIda.val())}`));
+      if ($dataVolta.val()) $liveTags.append(mkTag('fa-solid fa-plane-arrival', `Volta: ${fmtDateBR($dataVolta.val())}`));
+      if ($origem.val().trim()) $liveTags.append(mkTag('fa-solid fa-location-arrow', `Origem: ${$origem.val().trim()}`));
       const d = +($dias.val() || 0); if (d>0) $liveTags.append(mkTag('fa-regular fa-calendar', `${d} dia(s)`));
       const p = +($pessoas.val() || 0); if (p>0) $liveTags.append(mkTag('fa-solid fa-user-group', `${p} pessoa(s)`));
       const op = +($orcPessoa.val() || 0); if (op>0) $liveTags.append(mkTag('fa-solid fa-wallet', `R$ ${op.toLocaleString('pt-BR')} p/pessoa`));
@@ -471,35 +523,38 @@
       if ($email.val().trim()) $liveTags.append(mkTag('fa-regular fa-envelope', $email.val().trim()));
     }
 
+    function recalcDiasFromDates(){
+      if ($dataIda.val() && $dataVolta.val()){
+        const dd = daysDiff($dataIda.val(), $dataVolta.val());
+        if (dd && dd > 0) $dias.val(dd);
+      }
+    }
+
     function syncBudgets(){
       const p  = parseInt($pessoas.val() || 0, 10);
-      const pp = parseFloat($orcPessoa.val() || 0);   // orçamento por pessoa
-      const tt = parseFloat($orc.val() || 0);         // total
+      const pp = parseFloat($orcPessoa.val() || 0);
+      const tt = parseFloat($orc.val() || 0);
 
-      // Se houver pessoas + valor por pessoa -> calcula TOTAL automaticamente
       if (p > 0 && pp > 0) {
         const calc = Math.round(p * pp);
-        $orc.val(calc)
-            .prop('disabled', true)                   // trava o campo total (evita conflito)
-            .attr('title', 'Calculado automaticamente: pessoas × valor por pessoa');
+        $orc.val(calc).prop('disabled', true).attr('title', 'Calculado automaticamente: pessoas × valor por pessoa');
         $('#orcAutoHint').removeClass('d-none');
       } else {
-        // Libera o campo total quando não há valor por pessoa
         $orc.prop('disabled', false).removeAttr('title');
         $('#orcAutoHint').addClass('d-none');
-
-        // Se o TOTAL existir e valor/pessoa estiver vazio -> calcula valor/pessoa
         if (tt > 0 && p > 0 && (!pp || pp === 0)) {
           $orcPessoa.val(Math.round(tt / p));
         }
       }
-
       updateSummary();
       buildReview();
     }
 
-    [$destino,$dias,$pessoas,$orcPessoa,$orc,$perfil,$estilo,$email].forEach($el =>
-      $el.on('input change', ()=>{ syncBudgets(); updateSummary(); persistState(); })
+    [$destino,$dataIda,$dataVolta,$origem,$dias,$pessoas,$orcPessoa,$orc,$perfil,$estilo,$email].forEach($el =>
+      $el.on('input change', ()=>{
+        if($el.is($dataIda) || $el.is($dataVolta)) recalcDiasFromDates();
+        syncBudgets(); updateSummary(); persistState();
+      })
     );
     updateSummary();
 
@@ -515,18 +570,14 @@
       $steps.filter(`[data-step="${n}"]`).removeClass('hidden').addClass('animate__animated animate__fadeInUp');
       setTimeout(()=> $steps.removeClass('animate__animated animate__fadeInUp'), 400);
       $stepNow.text(n);
-      // step dots
       $('.step-dot').each(function(){ const i = +$(this).data('step'); $(this).toggleClass('active', i<=n); });
-      // progress %
       const pct = Math.max(12, Math.round((n-1)/(totalSteps-1)*100));
       $progressBar.css('width', pct+'%');
-      // buttons
       $btnBack.prop('disabled', n===1 || isLoading);
       $btnNext.toggleClass('hidden', n===totalSteps);
       $btnGenerate.toggleClass('hidden', n!==totalSteps);
       clearAlert();
       buildReview();
-      // focus
       setTimeout(()=> { const $input = $steps.filter(`[data-step="${n}"]`).find('input,select').first(); $input.trigger('focus'); }, 80);
     }
 
@@ -534,6 +585,9 @@
       $reviewTags.empty();
       if(current!==totalSteps) return;
       if ($destino.val().trim()) $reviewTags.append(mkTag('fa-solid fa-location-dot', $destino.val().trim()));
+      if ($dataIda.val()) $reviewTags.append(mkTag('fa-solid fa-plane-departure', `Ida: ${fmtDateBR($dataIda.val())}`));
+      if ($dataVolta.val()) $reviewTags.append(mkTag('fa-solid fa-plane-arrival', `Volta: ${fmtDateBR($dataVolta.val())}`));
+      if ($origem.val().trim()) $reviewTags.append(mkTag('fa-solid fa-location-arrow', `Origem: ${$origem.val().trim()}`));
       const d = +($dias.val() || 0); if (d>0) $reviewTags.append(mkTag('fa-regular fa-calendar', `${d} dia(s)`));
       const p = +($pessoas.val() || 0); if (p>0) $reviewTags.append(mkTag('fa-solid fa-user-group', `${p} pessoa(s)`));
       const op = +($orcPessoa.val() || 0);
@@ -547,29 +601,30 @@
 
     function validateStep(n){
       if(n===1 && !$destino.val().trim()) { setAlert('Informe o destino (país/estado/cidade).'); return false; }
-      if(n===2){ const d = +($dias.val()||0); if(!Number.isFinite(d) || d<=0){ setAlert('Informe um número de dias válido.'); return false; } }
-      if(n===3){ const p = +($pessoas.val()||0); if(!Number.isFinite(p) || p<=0){ setAlert('Informe a quantidade de pessoas.'); return false; } }
-      if(n===4){ const v = $orcPessoa.val(); if(v && +v<0){ setAlert('Orçamento por pessoa não pode ser negativo.'); return false; } }
-      if(n===5){ const v = $orc.val(); if(v && +v<0){ setAlert('Orçamento total não pode ser negativo.'); return false; } }
-      if(n===7){ const e = $email.val().trim(); if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; } }
+      if(n===2){
+        const ida = $dataIda.val(), volta = $dataVolta.val();
+        if(!ida || !volta){ setAlert('Informe as datas de ida e volta.'); return false; }
+        if(new Date(ida) > new Date(volta)){ setAlert('A data de volta deve ser igual ou posterior à ida.'); return false; }
+      }
+      if(n===3){ const d = +($dias.val()||0); if(!Number.isFinite(d) || d<=0){ setAlert('Informe um número de dias válido.'); return false; } }
+      if(n===4){ const p = +($pessoas.val()||0); if(!Number.isFinite(p) || p<=0){ setAlert('Informe a quantidade de pessoas.'); return false; } }
+      if(n===5){ const v = $orcPessoa.val(); if(v && +v<0){ setAlert('Orçamento por pessoa não pode ser negativo.'); return false; } }
+      if(n===6){ const v = $orc.val(); if(v && +v<0){ setAlert('Orçamento total não pode ser negativo.'); return false; } }
+      if(n===8){ const e = $email.val().trim(); if(e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){ setAlert('E-mail inválido.'); return false; } }
       return true;
     }
 
     function nextStep(){ if(!isLoading && validateStep(current) && current<totalSteps) showStep(current+1); }
     function prevStep(){ if(!isLoading && current>1) showStep(current-1); }
 
-    // ENTER => avançar (exceto no último)
     $wizard.on('keydown', 'input,select', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); (current<totalSteps? nextStep(): null); }});
-
-    // atalhos
     document.addEventListener('keydown', (e)=>{
       if(e.ctrlKey && e.key === 'Enter' && current===totalSteps){ e.preventDefault(); generate(); }
       if(e.key === 'Escape'){ prevStep(); }
     });
-
-    // buttons
     $btnNext.on('click', nextStep);
     $btnBack.on('click', prevStep);
+
     $btnReset.on('click', ()=>{
       if(isLoading) return;
       localStorage.removeItem('touristando_state');
@@ -577,6 +632,7 @@
       updateSummary(); clearAlert();
       showStep(1);
       $metaChips.empty();
+      $flightsBox.addClass('d-none').find('#flightsContent').empty();
       $res.removeClass('hidden'); $resRaw.addClass('hidden');
       $res.html('<p>Conclua o assistente e gere seu roteiro.</p>');
       window.scrollTo({top:0, behavior:'smooth'});
@@ -586,6 +642,7 @@
     let progTimer=null, loadingPhrases=[
       'Buscando moeda e país do destino…',
       'Consultando câmbio para BRL…',
+      'Pesquisando passagens aéreas (quando disponível)…',
       'Montando atrações e hospedagens…',
       'Finalizando roteiro em HTML…'
     ];
@@ -604,9 +661,10 @@
       progTimer = setInterval(()=>{
         w = Math.min(98, w + Math.random()*10);
         bar.css('width', w+'%');
-        if(w>25 && i===0){ i=1; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[1]); }
-        if(w>55 && i===1){ i=2; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[2]); }
-        if(w>80 && i===2){ i=3; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[3]); }
+        if(w>18 && i===0){ i=1; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[1]); }
+        if(w>42 && i===1){ i=2; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[2]); }
+        if(w>66 && i===2){ i=3; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[3]); }
+        if(w>85 && i===3){ i=4; $('#loadingMsg').html('<i class="fa-regular fa-clock me-1"></i>'+loadingPhrases[4]); }
       }, 600);
     }
     function stopFakeProgress(){
@@ -617,9 +675,17 @@
     // ====== persistência local ======
     function persistState(){
       const st = {
-        destino:$destino.val(), dias:$dias.val(), pessoas:$pessoas.val(),
-        orcPessoa:$orcPessoa.val(), orc:$orc.val(), perfil:$perfil.val(),
-        estilo:$estilo.val(), email:$email.val()
+        destino:$destino.val(),
+        dataIda:$dataIda.val(),
+        dataVolta:$dataVolta.val(),
+        origem:$origem.val(),
+        dias:$dias.val(),
+        pessoas:$pessoas.val(),
+        orcPessoa:$orcPessoa.val(),
+        orc:$orc.val(),
+        perfil:$perfil.val(),
+        estilo:$estilo.val(),
+        email:$email.val()
       };
       localStorage.setItem('touristando_state', JSON.stringify(st));
     }
@@ -627,6 +693,9 @@
       try{
         const st = JSON.parse(localStorage.getItem('touristando_state')||'{}');
         if(st.destino) $destino.val(st.destino);
+        if(st.dataIda) $dataIda.val(st.dataIda);
+        if(st.dataVolta) $dataVolta.val(st.dataVolta);
+        if(st.origem) $origem.val(st.origem);
         if(st.dias)    $dias.val(st.dias);
         if(st.pessoas) $pessoas.val(st.pessoas);
         if(st.orcPessoa) $orcPessoa.val(st.orcPessoa);
@@ -634,16 +703,66 @@
         if(st.perfil)  $perfil.val(st.perfil);
         if(st.estilo)  $estilo.val(st.estilo);
         if(st.email)   $email.val(st.email);
+        recalcDiasFromDates();
         syncBudgets();
         updateSummary();
       }catch{}
     })();
+
+    // ====== Flights box renderer ======
+    function renderFlights(data){
+      $flightsContent.empty();
+      let html = '';
+      const f = data?.flights || data?.passagens || {};
+      if (typeof f?.html === 'string' && f.html.trim()){
+        html = f.html.trim();
+      } else if (Array.isArray(f?.items) && f.items.length){
+        html = `
+          <div class="table-responsive">
+            <table class="table table-sm table-borderless align-middle mb-0">
+              <thead class="tiny">
+                <tr>
+                  <th class="text-white-50">Trecho</th>
+                  <th class="text-white-50">Datas</th>
+                  <th class="text-white-50">Companhia</th>
+                  <th class="text-white-50">Paradas</th>
+                  <th class="text-white-50">Duração</th>
+                  <th class="text-white-50">Preço</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${f.items.slice(0,6).map(v=>`
+                  <tr>
+                    <td>${(v.from || '')} → ${(v.to || '')}</td>
+                    <td>${fmtDateBR(v.depart || '')}${v.return ? ' · '+fmtDateBR(v.return) : ''}</td>
+                    <td>${v.airline || '-'}</td>
+                    <td>${(v.stops ?? 0)}x</td>
+                    <td>${v.duration || '-'}</td>
+                    <td>${v.price ? v.price : '-' } ${v.currency || ''}</td>
+                    <td>${v.deep_link ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noopener" href="${v.deep_link}">Ver</a>` : ''}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+      if (html){
+        $flightsContent.html(html);
+        $flightsBox.removeClass('d-none');
+      } else {
+        $flightsBox.addClass('d-none');
+      }
+    }
 
     // ====== generate ======
     async function generate(){
       if(!validateStep(totalSteps) || isLoading) return;
       const payload = {
         destino: $destino.val().trim(),
+        data_ida: $dataIda.val() || null,
+        data_volta: $dataVolta.val() || null,
+        origem: $origem.val().trim() || null,
         dias: Number($dias.val() || 5),
         pessoas: Number($pessoas.val() || 1),
         orcamento_por_pessoa: $('#orcamentoPessoa').val() ? Number($('#orcamentoPessoa').val()) : null,
@@ -653,6 +772,7 @@
         emailDestino: $email.val().trim() || null
       };
       setLoading(true);
+      $flightsBox.addClass('d-none').find('#flightsContent').empty();
       $res.html('<p>Solicitando à IA…</p>');
       document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -661,38 +781,42 @@
         const data = await resp.json();
         if(!resp.ok) throw new Error(data?.error || 'Falha ao gerar roteiro');
 
-        // Meta chips (moeda, taxa, destino, pessoas, estilo)
+        // Meta chips
         $metaChips.empty();
-        if(data.meta){
-          if(data.meta.destino) $metaChips.append(mkChip('fa-solid fa-map-pin', data.meta.destino));
-          if(data.meta.pessoas) $metaChips.append(mkChip('fa-solid fa-user-group', `${data.meta.pessoas} pessoa(s)`));
-          if(data.meta.estilo)  $metaChips.append(mkChip('fa-solid fa-heart', `Estilo: ${data.meta.estilo}`));
-          if(data.meta.currency_code) $metaChips.append(mkChip('fa-solid fa-money-bill', `Moeda: ${data.meta.currency_code}`));
-          if(data.meta.fx && data.meta.fx.brl_to_local){
-            const val = Number(data.meta.fx.brl_to_local).toFixed(4);
-            $metaChips.append(mkChip('fa-solid fa-scale-balanced', `1 BRL = ${val} ${data.meta.currency_code}`));
-          }
-          if(data.meta.fx && data.meta.fx.date){ $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${data.meta.fx.date}`)); }
-          if(data.meta.orcamento_por_pessoa){ $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(data.meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`)); }
-          if(data.meta.orcamento){ $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(data.meta.orcamento).toLocaleString('pt-BR')}`)); }
+        const meta = data.meta || {};
+        const tripIda = meta.data_ida || payload.data_ida;
+        const tripVolta = meta.data_volta || payload.data_volta;
+        const tripOrigem = meta.origem || payload.origem;
+
+        if(meta.destino) $metaChips.append(mkChip('fa-solid fa-map-pin', meta.destino));
+        if(tripOrigem) $metaChips.append(mkChip('fa-solid fa-location-arrow', `Origem: ${tripOrigem}`));
+        if(tripIda) $metaChips.append(mkChip('fa-solid fa-plane-departure', `Ida: ${fmtDateBR(tripIda)}`));
+        if(tripVolta) $metaChips.append(mkChip('fa-solid fa-plane-arrival', `Volta: ${fmtDateBR(tripVolta)}`));
+
+        if(meta.pessoas) $metaChips.append(mkChip('fa-solid fa-user-group', `${meta.pessoas} pessoa(s)`));
+        if(meta.estilo)  $metaChips.append(mkChip('fa-solid fa-heart', `Estilo: ${meta.estilo}`));
+        if(meta.currency_code) $metaChips.append(mkChip('fa-solid fa-money-bill', `Moeda: ${meta.currency_code}`));
+        if(meta.fx && meta.fx.brl_to_local){
+          const val = Number(meta.fx.brl_to_local).toFixed(4);
+          $metaChips.append(mkChip('fa-solid fa-scale-balanced', `1 BRL = ${val} ${meta.currency_code}`));
         }
+        if(meta.fx && meta.fx.date){ $metaChips.append(mkChip('fa-regular fa-calendar', `Taxa: ${meta.fx.date}`)); }
+        if(meta.orcamento_por_pessoa){ $metaChips.append(mkChip('fa-solid fa-wallet', `R$ ${Number(meta.orcamento_por_pessoa).toLocaleString('pt-BR')} p/pessoa`)); }
+        if(meta.orcamento){ $metaChips.append(mkChip('fa-solid fa-coins', `Total: R$ ${Number(meta.orcamento).toLocaleString('pt-BR')}`)); }
 
         // ===== Renderização do conteúdo =====
         const raw = (data.texto || '').trim();
         const looksLikeHtml = /^\s*</.test(raw);
         const purifyHtmlOpts = { ALLOW_DATA_ATTR: true, ADD_ATTR: ['style'] };
 
-        // Se o backend sinalizar 'render_as: html' ou se texto começar com '<', tratamos como HTML
         if (data.render_as === 'html' || looksLikeHtml) {
           contentIsHtml = true;
           lastMd = '';
           lastHtml = DOMPurify.sanitize(raw, purifyHtmlOpts);
           $res.html(lastHtml);
-          $res.addClass('trip-plan-container'); // (gancho se precisar)
-          // mostrar o código bruto no toggle Raw
+          $res.addClass('trip-plan-container');
           $resRaw.find('code').text(raw);
         } else {
-          // Fallback: Markdown -> HTML
           contentIsHtml = false;
           lastMd = raw || '(sem conteúdo)';
           marked.setOptions({ mangle:false, headerIds:false });
@@ -705,10 +829,12 @@
           $resRaw.find('code').text(lastMd);
         }
 
-        // Alternar botões conforme tipo de conteúdo
-        $btnCopy.toggle(!contentIsHtml);          // Copiar MD só se for MD
-        $btnDownload.toggle(!contentIsHtml);      // .md só se for MD
-        $btnCopyHTML.toggle(true);                // Sempre disponível (HTML renderizado)
+        // Flights
+        renderFlights(data);
+
+        $btnCopy.toggle(!contentIsHtml);
+        $btnDownload.toggle(!contentIsHtml);
+        $btnCopyHTML.toggle(true);
 
         confetti({ particleCount: 90, spread: 90, origin:{ y: 0.2 }});
         $('#toastText').text('Roteiro gerado!');
@@ -759,11 +885,10 @@
       else{ $res.addClass('hidden'); $resRaw.removeClass('hidden'); }
     });
 
-    // alternar fonte maior no resultado
     let zoomed = false;
     $btnZoom.on('click', ()=>{ zoomed = !zoomed; $res.css('font-size', zoomed ? '1.08rem' : ''); $res.find('h1,h2').css('font-size', zoomed ? '' : ''); });
 
-    // Back to top
+    // Back to top + scroll progress
     const $backTop = $('#backTop');
     $(window).on('scroll', ()=>{
       $backTop.toggle($(window).scrollTop()>300);
@@ -773,7 +898,7 @@
     });
     $backTop.on('click', ()=> window.scrollTo({top:0, behavior:'smooth'}));
 
-    // efeito tilt leve nos cards com .tilt
+    // efeito tilt
     (function tilt(){
       const els = document.querySelectorAll('.tilt');
       els.forEach(el=>{
