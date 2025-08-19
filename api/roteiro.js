@@ -3,16 +3,29 @@ export const config = { runtime: 'nodejs' }; // Serverless Node.js (Vercel)
 
 import sgMail from '@sendgrid/mail';
 
-/* ----------------------- utils ----------------------- */
-
-const escapeHtml = (s = '') =>
-  String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* ----------------------- debug/log helpers ----------------------- */
 
 function env(name, fallback = '') {
   const raw = process.env[name];
   if (typeof raw !== 'string') return fallback;
   return raw.trim().replace(/^['"]|['"]$/g, '');
 }
+const DEBUG = env('DEBUG_ROTEIRO') === '1' || (env('DEBUG') || '').toLowerCase().includes('roteiro');
+
+const log = (...args) => { if (DEBUG) console.log('[roteiro]', ...args); };
+const logError = (...args) => console.error('[roteiro]', ...args);
+const safeTruncate = (s, n = 400) => (typeof s === 'string' && s.length > n ? s.slice(0, n) + '…' : s);
+const maskEmail = (e='') => e.replace(/(^.).*(@.*$)/, (_, a, b) => `${a}***${b}`);
+
+function newReqId() {
+  const rnd = Math.random().toString(16).slice(2, 10);
+  return `rt-${Date.now().toString(36)}-${rnd}`;
+}
+
+/* ----------------------- utils ----------------------- */
+
+const escapeHtml = (s = '') =>
+  String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 async function fetchWithTimeout(url, opts = {}, ms = 20000) {
   const ctrl = new AbortController();
@@ -134,17 +147,19 @@ async function resolveIataTerm(term) {
   // 3) Autocomplete Travelpayouts (gratuito)
   try {
     const url = `https://autocomplete.travelpayouts.com/places2?term=${encodeURIComponent(term)}&locale=pt&types[]=city&types[]=airport`;
+    log('IATA autocomplete →', { term, url: url.replace(/term=[^&]+/, 'term=***') });
     const r = await fetchWithTimeout(url, {}, 12000);
     const data = await safeJson(r);
+    log('IATA autocomplete status', r.status, 'hits:', Array.isArray(data) ? data.length : 0);
     if (Array.isArray(data) && data.length) {
-      // preferir city.code; fallback: airport.city_code ou airport.code
       const city = data.find(x => x.type === 'city' && x.code);
-      if (city?.code) return String(city.code).toUpperCase();
+      if (city?.code) { log('IATA resolved (city)', term, '→', city.code); return String(city.code).toUpperCase(); }
       const ap = data.find(x => x.type === 'airport' && (x.city_code || x.code));
-      if (ap?.city_code) return String(ap.city_code).toUpperCase();
-      if (ap?.code) return String(ap.code).toUpperCase();
+      if (ap?.city_code) { log('IATA resolved (airport->city)', term, '→', ap.city_code); return String(ap.city_code).toUpperCase(); }
+      if (ap?.code) { log('IATA resolved (airport code)', term, '→', ap.code); return String(ap.code).toUpperCase(); }
     }
-  } catch { /* ignore */ }
+  } catch (e) { log('IATA autocomplete erro', String(e)); }
+  log('IATA fallback/unknown for term', term);
   return null;
 }
 
@@ -161,13 +176,13 @@ function joinDuration(d1, d2){
 
 /* ----------------------- Flights (Travelpayouts/Aviasales) ----------------------- */
 
-async function searchFlightsAviasales({ origin, destination, depart, ret, limit = 6 }) {
+async function searchFlightsAviasales({ origin, destination, depart, ret, limit = 6, reqId }) {
   const token = env('TRAVELPAYOUTS_TOKEN');
   if (!token) {
+    log('TRAVELPAYOUTS_TOKEN ausente — pulando busca de passagens');
     return { error: 'TRAVELPAYOUTS_TOKEN não configurado. Cadastre-se no Travelpayouts (gratuito) e defina a variável no projeto.' };
   }
 
-  // Endpoint: prices_for_dates — melhor preço para as datas informadas (BRL)
   const qs = new URLSearchParams({
     origin, destination,
     departure_at: depart, // YYYY-MM-DD
@@ -178,15 +193,23 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
     unique: 'false'
   });
   const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${qs.toString()}`;
+  log(`[${reqId}] Flights request`, { origin, destination, depart, ret, url });
 
+  console.time(`[${reqId}] flights_api`);
   const r = await fetchWithTimeout(url, { headers: { 'X-Access-Token': token } }, 20000);
   const j = await safeJson(r);
+  console.timeEnd(`[${reqId}] flights_api`);
 
   if (!r.ok) {
-    return { error: j?.message || j?._raw || 'Erro na API Travelpayouts', _raw: j };
+    logError(`[${reqId}] Flights error status`, r.status, 'body:', safeTruncate(j?._raw || JSON.stringify(j)));
+    return { error: j?.message || j?._raw || 'Erro na API Travelpayouts', _raw: j, status: r.status };
   }
 
   const items = Array.isArray(j?.data) ? j.data : [];
+  log(`[${reqId}] Flights OK`, { count: items.length, sample: items[0] ? {
+    from: items[0].origin, to: items[0].destination, price: items[0].price, link: items[0].link
+  } : null });
+
   const mapped = items.slice(0, limit).map(x => ({
     from: x.origin || origin,
     to: x.destination || destination,
@@ -203,19 +226,41 @@ async function searchFlightsAviasales({ origin, destination, depart, ret, limit 
   return { items: mapped, provider: 'Travelpayouts', _raw: j };
 }
 
+/* ----------------------- helpers de moeda extra ----------------------- */
+
+function fmtMoneyGeneric(v, code = 'USD') {
+  try {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: code }).format(v);
+  } catch {
+    const sym = CURRENCY_SYMBOLS[code] || code;
+    return `${sym} ${fmtNumberBR(v)}`;
+  }
+}
+function pairBRLWithLocal(brlValue, quoteCode, brlToQuote) {
+  if (!Number.isFinite(brlValue)) return null;
+  if (!quoteCode || quoteCode.toUpperCase() === 'BRL' || !Number.isFinite(brlToQuote) || brlToQuote <= 0) {
+    return fmtMoneyBRL(brlValue);
+  }
+  const local = brlValue * brlToQuote;
+  return `${fmtMoneyBRL(brlValue)} (~${fmtMoneyGeneric(local, quoteCode)})`;
+}
+
 /* ----------------------- handler ----------------------- */
 
 export default async function handler(req, res) {
+  const reqId = newReqId();
+  res.setHeader('x-request-id', reqId);
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed', reqId });
   }
 
   // 🔑 OpenAI
   const OPENAI_API_KEY = env('OPENAI_API_KEY');
   const OPENAI_API_BASE = env('OPENAI_API_BASE', 'https://api.openai.com/v1');
   if (!OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no projeto (Vercel).' });
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no projeto (Vercel).', reqId });
   }
 
   // ✉️ E-mail (opcional)
@@ -236,6 +281,14 @@ export default async function handler(req, res) {
         body = raw ? JSON.parse(raw) : {};
       } catch { body = {}; }
     }
+
+    // log de entrada (parcial)
+    const dbgIn = (() => {
+      const clone = { ...body };
+      if (clone.emailDestino) clone.emailDestino = maskEmail(String(clone.emailDestino));
+      return clone;
+    })();
+    log(`[${reqId}] Incoming payload`, dbgIn);
 
     const destinoEntrada =
       body.destino?.toString().trim() ||
@@ -278,8 +331,8 @@ export default async function handler(req, res) {
       orcTotal = pessoas ? (orcPerPerson * pessoas) : null;
     }
 
-    if (!destinoEntrada) return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").' });
-    if (!Number.isFinite(dias) || dias <= 0) return res.status(400).json({ error: 'O campo "dias" deve ser um número > 0.' });
+    if (!destinoEntrada) return res.status(400).json({ error: 'Informe o destino (país/estado/cidade) no campo "destino" (ou "pais").', reqId });
+    if (!Number.isFinite(dias) || dias <= 0) return res.status(400).json({ error: 'O campo "dias" deve ser um número > 0.', reqId });
 
     /* ---------- 1) Normalizar destino + moeda (Chat Completions JSON) ---------- */
     const classifyMsg = [
@@ -295,15 +348,18 @@ Campos:
       { role: 'user', content: `Destino: ${destinoEntrada}` }
     ];
 
+    console.time(`[${reqId}] openai_classify`);
     const classifyResp = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.0, response_format: { type: 'json_object' }, messages: classifyMsg })
     }, 25000);
+    console.timeEnd(`[${reqId}] openai_classify`);
 
     if (!classifyResp.ok) {
       const errTxt = await classifyResp.text();
-      return res.status(classifyResp.status).json({ error: 'Falha ao classificar destino', raw: errTxt });
+      logError(`[${reqId}] classify error`, classifyResp.status, safeTruncate(errTxt));
+      return res.status(classifyResp.status).json({ error: 'Falha ao classificar destino', raw: safeTruncate(errTxt), reqId });
     }
     const clsData = await safeJson(classifyResp);
     const meta = (() => {
@@ -325,6 +381,7 @@ Campos:
         };
       }
     })();
+    log(`[${reqId}] meta`, meta);
 
     /* ---------- 2) Câmbio ---------- */
     let fx = {
@@ -340,17 +397,22 @@ Campos:
         fx.brl_to_quote = 1;
         fx.quote_to_brl = 1;
       } else {
+        console.time(`[${reqId}] fx_fetch`);
         const r = await fetchWithTimeout(
           `https://api.exchangerate.host/latest?base=BRL&symbols=${encodeURIComponent(meta.currency_code)}`,
           {}, 15000
         );
         const j = await safeJson(r);
+        console.timeEnd(`[${reqId}] fx_fetch`);
         const rate = j?.rates?.[meta.currency_code] || 0;
         fx.brl_to_quote = rate;
         fx.quote_to_brl = rate ? (1 / rate) : 0;
         if (j?.date) fx.date = fmtDate(new Date(j.date + 'T00:00:00Z'));
       }
-    } catch { /* mantém zeros e usamos só BRL */ }
+    } catch (e) {
+      logError(`[${reqId}] fx error`, String(e));
+    }
+    log(`[${reqId}] fx`, fx);
 
     const faixa = (() => {
       const partes = [];
@@ -489,52 +551,79 @@ Contexto:
 - País: ${meta.country_name || '(não identificado)'}
 `;
 
-    /* ---------- 4) Geração com Responses API + web_search (fallback sem busca) ---------- */
+    /* ---------- 4) Geração com Responses API + web_search (fallbacks) ---------- */
     async function generateHtmlWithSearch(inputText) {
-      // tentativa A — Responses API com busca
-      const resp = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          input: inputText,
-          tools: [{ type: 'web_search' }],
-          tool_choice: 'auto'
-        })
-      }, 90000);
+      // tentativa A — Responses API com web_search
+      try {
+        console.time(`[${reqId}] openai_responses_search`);
+        const resp = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            input: inputText,
+            tools: [{ type: 'web_search' }],
+            tool_choice: 'auto'
+          })
+        }, 90000);
+        console.timeEnd(`[${reqId}] openai_responses_search`);
 
-      const data = await safeJson(resp);
-      if (resp.ok) {
-        return { html: extractResponsesText(data).trim(), usedSearch: true, raw: data };
+        if (resp.ok) {
+          const dataOk = await safeJson(resp);
+          const html = extractResponsesText(dataOk).trim();
+          log(`[${reqId}] responses+search ok html_len=${html.length}`);
+          return { html, usedSearch: true, raw: dataOk };
+        } else {
+          const errTxt = await resp.text();
+          logError(`[${reqId}] responses+search error`, resp.status, safeTruncate(errTxt));
+        }
+      } catch (e) {
+        logError(`[${reqId}] responses+search exception`, String(e));
       }
 
-      // tentativa B — sem web_search (Responses)
-      if (data?.error?.message?.toLowerCase?.().includes('web_search')) {
+      // tentativa B — Responses sem web_search
+      try {
+        console.time(`[${reqId}] openai_responses_plain`);
         const respNoSearch = await fetchWithTimeout(`${OPENAI_API_BASE}/responses`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: 'gpt-4o-mini', input: inputText })
         }, 90000);
-        const dataNo = await safeJson(respNoSearch);
+        console.timeEnd(`[${reqId}] openai_responses_plain`);
+
         if (respNoSearch.ok) {
-          return { html: extractResponsesText(dataNo).trim(), usedSearch: false, raw: dataNo };
+          const dataNo = await safeJson(respNoSearch);
+          const html = extractResponsesText(dataNo).trim();
+          log(`[${reqId}] responses(no-search) ok html_len=${html.length}`);
+          return { html, usedSearch: false, raw: dataNo };
+        } else {
+          const errTxt = await respNoSearch.text();
+          logError(`[${reqId}] responses(no-search) error`, respNoSearch.status, safeTruncate(errTxt));
         }
-        // fallback final — Chat Completions
-        const cc = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages: [
-            { role:'system', content:'Você é um travel planner sênior. Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown.' },
-            { role:'user', content: inputText }
-          ]})
-        }, 90000);
-        const ccData = await safeJson(cc);
-        if (!cc.ok) throw new Error(ccData?.error?.message || ccData?._raw || 'Falha na OpenAI');
-        return { html: (ccData?.choices?.[0]?.message?.content || '').trim(), usedSearch: false, raw: ccData };
+      } catch (e) {
+        logError(`[${reqId}] responses(no-search) exception`, String(e));
       }
 
-      // erro genérico
-      throw new Error(data?.error?.message || data?._raw || 'Falha na OpenAI');
+      // tentativa C — Chat Completions
+      console.time(`[${reqId}] openai_chat_fallback`);
+      const cc = await fetchWithTimeout(`${OPENAI_API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.7, messages: [
+          { role:'system', content:'Você é um travel planner sênior. Responda APENAS com HTML válido (fragmento), em PT-BR, sem Markdown.' },
+          { role:'user', content: inputText }
+        ]})
+      }, 90000);
+      console.timeEnd(`[${reqId}] openai_chat_fallback`);
+
+      const ccData = await safeJson(cc);
+      if (!cc.ok) {
+        logError(`[${reqId}] chat fallback error`, cc.status, safeTruncate(ccData?._raw || JSON.stringify(ccData)));
+        throw new Error(ccData?.error?.message || ccData?._raw || 'Falha na OpenAI');
+      }
+      const html = (ccData?.choices?.[0]?.message?.content || '').trim();
+      log(`[${reqId}] chat fallback ok html_len=${html.length}`);
+      return { html, usedSearch: false, raw: ccData };
     }
 
     const gen = await generateHtmlWithSearch(mainPrompt);
@@ -563,10 +652,14 @@ Contexto:
     pushRow('Pessoas', String(pessoas));
     pushRow('Perfil', perfil.charAt(0).toUpperCase()+perfil.slice(1));
     pushRow('Estilo', estilo.charAt(0).toUpperCase()+estilo.slice(1));
-    if (orcTotal && orcTotal>0) pushRow('Orçamento total', fmtMoneyBRL(orcTotal));
-    if (orcPerPerson && orcPerPerson>0) pushRow('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson));
+    if (orcTotal && orcTotal>0) pushRow('Orçamento total', pairBRLWithLocal(orcTotal, meta.currency_code, fx.brl_to_quote));
+    if (orcPerPerson && orcPerPerson>0) pushRow('Orçamento por pessoa', pairBRLWithLocal(orcPerPerson, meta.currency_code, fx.brl_to_quote));
     pushRow('Moeda local', currencyLabel(meta.currency_code, meta.currency_name));
-    pushRow('Taxa utilizada', convHeader);
+    pushRow('Taxa utilizada', `(${reqId}) ${ // coloco o reqId aqui pra facilitar achar nos logs
+      (fx.quote !== 'BRL' && fx.brl_to_quote)
+        ? `1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)}) — ${fx.date}`
+        : `1 BRL = 1 BRL (sem conversão)`
+    }`);
     if (gen.usedSearch) pushRow('Pesquisa na web', 'Ativada (Responses API)');
 
     const section0 = `
@@ -596,22 +689,26 @@ Contexto:
       if (dataIda && dataVolta && origemEntrada) {
         const originIata = await resolveIataTerm(origemEntrada);
         const destIata = await resolveIataTerm(destinoEntrada);
+        log(`[${reqId}] IATA resolved`, { origemEntrada, originIata, destinoEntrada, destIata });
         if (originIata && destIata) {
           const f = await searchFlightsAviasales({
             origin: originIata,
             destination: destIata,
             depart: dataIda,
             ret: dataVolta,
-            limit: 6
+            limit: 6,
+            reqId
           });
           flights = f;
         } else {
           flights = { error: 'Não foi possível resolver IATA de origem ou destino.' };
         }
       } else {
+        log(`[${reqId}] flights skipped — faltam origem/data_ida/data_volta`);
         flights = null; // origem/datas ausentes: não buscar
       }
     } catch (e) {
+      logError(`[${reqId}] flights exception`, String(e));
       flights = { error: 'Falha ao buscar passagens', detail: String(e) };
     }
 
@@ -642,7 +739,8 @@ Contexto:
       // Flights (para o front)
       flights: flights || undefined,
       passagens: flights || undefined, // alias
-      render_as: 'html'
+      render_as: 'html',
+      reqId
     };
 
     /* ---------- 6) E-mail (opcional) ---------- */
@@ -659,12 +757,14 @@ Contexto:
       rows.push(row('Perfil', perfil));
       rows.push(row('Estilo', estilo));
       rows.push(row('Moeda local', currencyLabel(meta.currency_code, meta.currency_name)));
-      rows.push(row('Taxa usada', convHeader));
+      rows.push(row('Taxa usada', (fx.quote !== 'BRL' && fx.brl_to_quote)
+        ? `1 BRL = ${fx.brl_to_quote.toFixed(4)} ${fx.quote}  (1 ${fx.quote} ≈ R$ ${fmtNumberBR(fx.quote_to_brl)}) — ${fx.date}`
+        : `1 BRL = 1 BRL (sem conversão)`));
       if (dataIda) rows.push(row('Ida', dataIda));
       if (dataVolta) rows.push(row('Volta', dataVolta));
       if (origemEntrada) rows.push(row('Origem', origemEntrada));
-      if (orcTotal && orcTotal > 0) rows.push(row('Orçamento total', fmtMoneyBRL(orcTotal)));
-      if (orcPerPerson && orcPerPerson > 0) rows.push(row('Orçamento por pessoa', fmtMoneyBRL(orcPerPerson)));
+      if (orcTotal && orcTotal > 0) rows.push(row('Orçamento total', pairBRLWithLocal(orcTotal, meta.currency_code, fx.brl_to_quote)));
+      if (orcPerPerson && orcPerPerson > 0) rows.push(row('Orçamento por pessoa', pairBRLWithLocal(orcPerPerson, meta.currency_code, fx.brl_to_quote)));
       if (gen.usedSearch) rows.push(row('Pesquisa na web', 'Ativada (Responses API)'));
       return `
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #eaeaea;border-radius:8px;overflow:hidden">
@@ -697,17 +797,24 @@ Contexto:
 </div>`.trim();
 
       try {
+        console.time(`[${reqId}] sendgrid`);
         await sgMail.send({ to: emailDestino, from: MAIL_FROM, subject: assunto, text: 'Veja seu roteiro em HTML.', html });
+        console.timeEnd(`[${reqId}] sendgrid`);
+        log(`[${reqId}] email enviado para`, maskEmail(emailDestino));
         payloadOut.email = { enviado: true, para: emailDestino };
       } catch (e) {
+        logError(`[${reqId}] email erro`, e?.response?.body || String(e));
         payloadOut.email = { enviado: false, erro: e?.response?.body || String(e) };
       }
+    } else {
+      log(`[${reqId}] email skip`, { hasKey: !!SENDGRID_API_KEY, hasFrom: !!MAIL_FROM, hasDest: !!emailDestino });
     }
 
     res.setHeader('Cache-Control', 'no-store');
+    log(`[${reqId}] responding 200 ok`);
     return res.status(200).json(payloadOut);
   } catch (err) {
-    console.error('Erro /api/roteiro:', err);
-    return res.status(500).json({ error: 'Falha interna.' });
+    logError('Erro /api/roteiro:', err);
+    return res.status(500).json({ error: 'Falha interna.', reqId });
   }
 }
